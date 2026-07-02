@@ -47,6 +47,18 @@ func ExtractPackage(symbolID string) string {
 	return strings.Join(subParts[:len(subParts)-1], "/")
 }
 
+const maxGraphNodes = 50
+
+// topLevelPkg collapses a full path to its first meaningful segment.
+// "translations/en" → "translations", "main" → "main", "cmd/server" → "cmd"
+func topLevelPkg(path string) string {
+	if path == "" || path == "." {
+		return "main"
+	}
+	parts := strings.SplitN(path, "/", 2)
+	return parts[0]
+}
+
 func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 	data, err := os.ReadFile(irPath)
 	if err != nil {
@@ -58,105 +70,117 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		return nil, fmt.Errorf("failed to unmarshal IR: %w", err)
 	}
 
-	packageSet := make(map[string]bool)
-	symbolPackageMap := make(map[string]string)
-	packageFileCount := make(map[string]int)
+	// ── 1. Collect top-level package names and count files per package ──────
+	fileCount := make(map[string]int) // topPkg → count
 
-	// Build a set of internal module names for fast lookup
-	internalModules := make(map[string]bool)
-	for _, m := range ir.Modules {
-		internalModules[m] = true
-		packageSet[m] = true
-	}
-
-	// Collect all packages from symbols and build symbol-to-package lookup map
-	for _, sym := range ir.Symbols {
-		pkg := ExtractPackage(sym.ID)
-		packageSet[pkg] = true
-		symbolPackageMap[sym.ID] = pkg
-	}
-
-	// Count files per package by directory
 	for _, f := range ir.Files {
 		dir := filepath.Dir(f.Path)
-		// Normalize root-level files to the repo name or "main"
 		if dir == "." {
 			dir = "main"
 		}
-		// Map the directory path segment to an internal module if possible
-		dirParts := strings.Split(dir, "/")
-		pkg := dirParts[0]
-		if len(dirParts) > 1 && !internalModules[dirParts[0]] {
-			// use full directory as package name
-			pkg = dir
-		}
-		packageFileCount[pkg]++
-		packageSet[pkg] = true
+		pkg := topLevelPkg(dir)
+		fileCount[pkg]++
 	}
 
-	// Create package nodes
+	// Also seed from module list (catches packages with no files listed)
+	for _, m := range ir.Modules {
+		top := topLevelPkg(m)
+		if _, ok := fileCount[top]; !ok {
+			fileCount[top] = 0
+		}
+	}
+	// And from symbols
+	for _, sym := range ir.Symbols {
+		raw := ExtractPackage(sym.ID)
+		top := topLevelPkg(raw)
+		if _, ok := fileCount[top]; !ok {
+			fileCount[top] = 0
+		}
+	}
+
+	// ── 2. Sort packages by file count (desc) and cap at maxGraphNodes ───────
+	type pkgEntry struct {
+		name  string
+		count int
+	}
+	var ranked []pkgEntry
+	for name, cnt := range fileCount {
+		ranked = append(ranked, pkgEntry{name, cnt})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].count != ranked[j].count {
+			return ranked[i].count > ranked[j].count
+		}
+		return ranked[i].name < ranked[j].name
+	})
+	if len(ranked) > maxGraphNodes {
+		ranked = ranked[:maxGraphNodes]
+	}
+
+	// Build fast membership set for the chosen packages
+	chosen := make(map[string]bool, len(ranked))
+	for _, e := range ranked {
+		chosen[e.name] = true
+	}
+
+	// Create nodes
 	var nodes []GraphNode
-	for pkg := range packageSet {
+	for _, e := range ranked {
 		nodes = append(nodes, GraphNode{
-			ID:        pkg,
-			Label:     pkg,
+			ID:        e.name,
+			Label:     e.name,
 			Kind:      "package",
-			FileCount: packageFileCount[pkg],
+			FileCount: e.count,
 		})
 	}
 
-	// Sort nodes to be deterministic
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID < nodes[j].ID
-	})
+	// ── 3. Build edges (top-level → top-level, skip self-loops) ────────────
+	edgeWeights := make(map[string]int)
 
-	// Build package-to-package dependency edge count
-	edgeWeights := make(map[string]int) // "sourcePkg->targetPkg" -> weight
-
-	// 1. Derive edges from symbol-level relationships (if present)
+	// 3a. Symbol-level relationships
 	for _, rel := range ir.Relationships {
-		srcPkg, srcOk := symbolPackageMap[rel.Source]
-		tgtPkg, tgtOk := symbolPackageMap[rel.Target]
-
-		if !srcOk {
-			srcPkg = ExtractPackage(rel.Source)
-		}
-		if !tgtOk {
-			tgtPkg = ExtractPackage(rel.Target)
-		}
-
-		// Only map package-level dependencies between DIFFERENT packages
-		if srcPkg != tgtPkg {
-			key := fmt.Sprintf("%s->%s", srcPkg, tgtPkg)
-			edgeWeights[key]++
+		srcTop := topLevelPkg(ExtractPackage(rel.Source))
+		tgtTop := topLevelPkg(ExtractPackage(rel.Target))
+		if srcTop != tgtTop && chosen[srcTop] && chosen[tgtTop] {
+			edgeWeights[srcTop+"->"+tgtTop]++
 		}
 	}
 
-	// 2. Derive edges from file-level imports (catches repos with no symbol relationships)
+	// 3b. File-level imports (fallback when relationships are absent)
 	if len(edgeWeights) == 0 {
+		// Build set of internal module top-levels for matching
+		internalTops := make(map[string]bool)
+		for _, m := range ir.Modules {
+			internalTops[topLevelPkg(m)] = true
+		}
+		for name := range fileCount {
+			internalTops[topLevelPkg(name)] = true
+		}
+
 		for _, f := range ir.Files {
-			// Determine the source package from the file's directory
 			dir := filepath.Dir(f.Path)
 			if dir == "." {
 				dir = "main"
 			}
-			dirParts := strings.Split(dir, "/")
-			srcPkg := dirParts[0]
-
+			srcTop := topLevelPkg(dir)
+			if !chosen[srcTop] {
+				continue
+			}
 			for _, imp := range f.Imports {
-				// Match import path against known internal modules
-				// e.g. import "github.com/go-playground/validator/v10/translations/en" -> target "en"
-				for mod := range internalModules {
-					if mod != srcPkg && (imp == mod || strings.HasSuffix(imp, "/"+mod)) {
-						key := fmt.Sprintf("%s->%s", srcPkg, mod)
-						edgeWeights[key]++
+				// Match the last segment of the import path against known top-level packages
+				impParts := strings.Split(imp, "/")
+				for i := len(impParts) - 1; i >= 0; i-- {
+					tgtTop := impParts[i]
+					if tgtTop != srcTop && chosen[tgtTop] && internalTops[tgtTop] {
+						edgeWeights[srcTop+"->"+tgtTop]++
+						break
 					}
 				}
 			}
 		}
 	}
 
-	// Create package edges
+	// Create edges (only keep weight ≥ 1)
 	var edges []GraphEdge
 	for key, weight := range edgeWeights {
 		parts := strings.SplitN(key, "->", 2)
@@ -170,7 +194,6 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		}
 	}
 
-	// Sort edges to be deterministic
 	sort.Slice(edges, func(i, j int) bool {
 		if edges[i].Source == edges[j].Source {
 			return edges[i].Target < edges[j].Target
@@ -178,11 +201,9 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		return edges[i].Source < edges[j].Source
 	})
 
-	return &GraphResponse{
-		Nodes: nodes,
-		Edges: edges,
-	}, nil
+	return &GraphResponse{Nodes: nodes, Edges: edges}, nil
 }
+
 
 func GenerateSystemDocs(irPath string) (*DocsResponse, error) {
 	data, err := os.ReadFile(irPath)

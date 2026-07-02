@@ -1991,9 +1991,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
   highlightedNode = signal<string | null>(null);
   graphSvgWidth = 900;
   graphSvgHeight = 500;
-  private _nodePositions: Map<string, { x: number; y: number }> = new Map();
   private _graphDragging = false;
   private _graphLastMouse = { x: 0, y: 0 };
+
+  // Reactive node positions — recomputed whenever graphData changes
+  nodePositions = computed(() => {
+    const data = this.graphData();
+    const positions = new Map<string, { x: number; y: number }>();
+    if (!data?.nodes?.length) return positions;
+    const n = data.nodes.length;
+    const cx = this.graphSvgWidth / 2;
+    const cy = this.graphSvgHeight / 2;
+    const radius = Math.min(cx, cy) - 65;
+    if (n === 1) {
+      positions.set(data.nodes[0].id, { x: cx, y: cy });
+      return positions;
+    }
+    data.nodes.forEach((node: any, i: number) => {
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+      positions.set(node.id, {
+        x: Math.round(cx + radius * Math.cos(angle)),
+        y: Math.round(cy + radius * Math.sin(angle))
+      });
+    });
+    return positions;
+  });
 
   // Documentation signals
   docsMarkdown = signal<string | null>(null);
@@ -2212,8 +2234,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (data) => {
         this.graphData.set(data);
         this.loadingGraph.set(false);
-        this._nodePositions.clear();
-        this.layoutGraphNodes(data.nodes || []);
       },
       error: () => {
         this.loadingGraph.set(false);
@@ -2222,27 +2242,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
-  layoutGraphNodes(nodes: any[]): void {
-    const n = nodes.length;
-    if (n === 0) return;
-    const cx = this.graphSvgWidth / 2;
-    const cy = this.graphSvgHeight / 2;
-    const radius = Math.min(cx, cy) - 70;
-    if (n === 1) {
-      this._nodePositions.set(nodes[0].id, { x: cx, y: cy });
-      return;
-    }
-    nodes.forEach((node, i) => {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-      this._nodePositions.set(node.id, {
-        x: cx + radius * Math.cos(angle),
-        y: cy + radius * Math.sin(angle)
-      });
-    });
-  }
-
   getNodePos(nodeId: string): { x: number; y: number } | undefined {
-    return this._nodePositions.get(nodeId);
+    return this.nodePositions().get(nodeId);
   }
 
   getNodeShortName(nodeId: string): string {
