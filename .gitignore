@@ -1,0 +1,12 @@
+# Go
+backend/bin/
+backend/.env
+
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.env
+
+# OS
+.DS_Store
