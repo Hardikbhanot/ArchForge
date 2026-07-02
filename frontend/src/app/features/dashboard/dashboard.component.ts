@@ -1,8 +1,9 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription, interval, startWith, switchMap } from 'rxjs';
 
 export interface Project {
@@ -38,7 +39,7 @@ export interface GithubRepo {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, DecimalPipe],
   template: `
     <div class="dashboard-container">
       <div class="glow-mesh-1"></div>
@@ -275,45 +276,225 @@ export interface GithubRepo {
                 </div>
               </div>
 
-              <!-- Symbol Explorer -->
-              <div class="explorer-section">
-                <h4>Extracted Symbols Registry</h4>
-                @if (selectedProjectIR()?.symbols?.length > 0) {
-                  <div class="symbols-table-container">
-                    <table class="symbols-table">
-                      <thead>
-                        <tr>
-                          <th>Symbol</th>
-                          <th>Kind</th>
-                          <th>Package</th>
-                          <th>Defined In</th>
-                          <th>Location</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (sym of selectedProjectIR()?.symbols; track sym.id) {
-                          <tr>
-                            <td class="sym-name-col">
-                              <span class="sym-id-code" [title]="sym.id">{{ sym.name }}</span>
-                              @if (sym.documentation) {
-                                <p class="sym-doc-preview" [title]="sym.documentation">{{ sym.documentation }}</p>
-                              }
-                            </td>
-                            <td><span class="kind-badge" [class]="sym.kind.toLowerCase()">{{ sym.kind }}</span></td>
-                            <td><span class="pkg-badge">{{ getPackageFromSymbol(sym) }}</span></td>
-                            <td class="file-path-col" [title]="sym.location.file">{{ getFileName(sym.location.file) }}</td>
-                            <td>Line {{ sym.location.lineStart }} - {{ sym.location.lineEnd }}</td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                } @else {
-                  <div class="empty-state-sm">
-                    <p>No symbols parsed from this codebase yet. (Only Go files are currently analyzed.)</p>
-                  </div>
-                }
+              <!-- Tab Selector -->
+              <div class="insights-tabs" role="tablist">
+                <button 
+                  role="tab"
+                  [class.active]="insightsTab() === 'symbols'"
+                  (click)="setInsightsTab('symbols')" 
+                  id="tab-symbols"
+                  class="tab-btn"
+                >Symbol Explorer</button>
+                <button 
+                  role="tab"
+                  [class.active]="insightsTab() === 'graph'"
+                  (click)="setInsightsTab('graph')" 
+                  id="tab-graph"
+                  class="tab-btn"
+                >Architecture Graph</button>
+                <button 
+                  role="tab"
+                  [class.active]="insightsTab() === 'docs'"
+                  (click)="setInsightsTab('docs')" 
+                  id="tab-docs"
+                  class="tab-btn"
+                >System Documentation</button>
               </div>
+
+              <!-- ============ TAB: Symbol Explorer ============ -->
+              @if (insightsTab() === 'symbols') {
+                <div class="explorer-section">
+                  @if (selectedProjectIR()?.symbols?.length > 0) {
+                    <div class="symbols-table-container">
+                      <table class="symbols-table">
+                        <thead>
+                          <tr>
+                            <th>Symbol</th>
+                            <th>Kind</th>
+                            <th>Package</th>
+                            <th>Defined In</th>
+                            <th>Location</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (sym of selectedProjectIR()?.symbols; track sym.id) {
+                            <tr>
+                              <td class="sym-name-col">
+                                <span class="sym-id-code" [title]="sym.id">{{ sym.name }}</span>
+                                @if (sym.documentation) {
+                                  <p class="sym-doc-preview" [title]="sym.documentation">{{ sym.documentation }}</p>
+                                }
+                              </td>
+                              <td><span class="kind-badge" [class]="sym.kind.toLowerCase()">{{ sym.kind }}</span></td>
+                              <td><span class="pkg-badge">{{ getPackageFromSymbol(sym) }}</span></td>
+                              <td class="file-path-col" [title]="sym.location.file">{{ getFileName(sym.location.file) }}</td>
+                              <td>Line {{ sym.location.lineStart }} - {{ sym.location.lineEnd }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  } @else {
+                    <div class="empty-state-sm">
+                      <p>No symbols parsed from this codebase yet. (Only Go files are currently analyzed.)</p>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- ============ TAB: Architecture Graph ============ -->
+              @if (insightsTab() === 'graph') {
+                <div class="graph-tab-content">
+                  @if (loadingGraph()) {
+                    <div class="insights-loading"><span class="spinner-sm"></span> Building dependency graph...</div>
+                  } @else if (graphData()) {
+                    <!-- Graph Controls -->
+                    <div class="graph-controls">
+                      <button (click)="graphZoomIn()" class="graph-ctrl-btn" title="Zoom In">＋</button>
+                      <button (click)="graphZoomOut()" class="graph-ctrl-btn" title="Zoom Out">－</button>
+                      <button (click)="graphResetView()" class="graph-ctrl-btn" title="Reset View">⊙</button>
+                      <span class="graph-zoom-label">{{ (graphZoom() * 100) | number:'1.0-0' }}%</span>
+                      @if (highlightedNode()) {
+                        <span class="graph-selected-label">📦 {{ highlightedNode() }}</span>
+                        <button (click)="highlightedNode.set(null)" class="graph-ctrl-btn">✕ Clear</button>
+                      }
+                    </div>
+
+                    <!-- SVG Graph Container -->
+                    <div 
+                      class="graph-viewport"
+                      (wheel)="onGraphWheel($event)"
+                      (mousedown)="onGraphMouseDown($event)"
+                      (mousemove)="onGraphMouseMove($event)"
+                      (mouseup)="onGraphMouseUp()"
+                      (mouseleave)="onGraphMouseUp()"
+                    >
+                      <svg 
+                        class="graph-svg"
+                        [attr.width]="graphSvgWidth"
+                        [attr.height]="graphSvgHeight"
+                        id="arch-graph-svg"
+                      >
+                        <!-- Arrow marker defs -->
+                        <defs>
+                          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                            <path d="M0,0 L0,6 L8,3 z" fill="rgba(99,102,241,0.7)"/>
+                          </marker>
+                          <marker id="arrow-hi" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                            <path d="M0,0 L0,6 L8,3 z" fill="#a78bfa"/>
+                          </marker>
+                          <filter id="glow-filter">
+                            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                            <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                          </filter>
+                        </defs>
+
+                        <g [attr.transform]="'translate(' + graphPanX() + ',' + graphPanY() + ') scale(' + graphZoom() + ')'">
+                          <!-- Edges -->
+                          @for (edge of graphData()?.edges; track edge.from + edge.to) {
+                            <line
+                              [attr.x1]="getNodePos(edge.from)?.x"
+                              [attr.y1]="getNodePos(edge.from)?.y"
+                              [attr.x2]="getNodePos(edge.to)?.x"
+                              [attr.y2]="getNodePos(edge.to)?.y"
+                              [class.edge-hi]="highlightedNode() === edge.from || highlightedNode() === edge.to"
+                              class="graph-edge"
+                              [attr.marker-end]="(highlightedNode() === edge.from || highlightedNode() === edge.to) ? 'url(#arrow-hi)' : 'url(#arrow)'"
+                            />
+                          }
+
+                          <!-- Nodes -->
+                          @for (node of graphData()?.nodes; track node.id) {
+                            <g 
+                              class="graph-node-group"
+                              [class.node-hi]="highlightedNode() === node.id"
+                              [attr.transform]="'translate(' + getNodePos(node.id)?.x + ',' + getNodePos(node.id)?.y + ')'"
+                              (click)="highlightedNode.set(highlightedNode() === node.id ? null : node.id)"
+                            >
+                              <circle 
+                                r="42"
+                                class="node-bg"
+                                [class.node-bg-hi]="highlightedNode() === node.id"
+                              />
+                              <circle 
+                                r="42"
+                                class="node-ring"
+                                [class.node-ring-hi]="highlightedNode() === node.id"
+                              />
+                              <text class="node-label" text-anchor="middle" dominant-baseline="middle">{{ getNodeShortName(node.id) }}</text>
+                              @if (node.file_count) {
+                                <text class="node-sub" text-anchor="middle" dominant-baseline="middle" dy="16">{{ node.file_count }} files</text>
+                              }
+                            </g>
+                          }
+                        </g>
+                      </svg>
+                    </div>
+
+                    <!-- Graph Legend -->
+                    <div class="graph-legend">
+                      <span class="legend-item"><span class="legend-dot node"></span> Package</span>
+                      <span class="legend-item"><span class="legend-dot edge"></span> Dependency</span>
+                      <span class="legend-hint">Click a node to highlight connections · Scroll or pinch to zoom · Drag to pan</span>
+                    </div>
+
+                    <!-- Node Detail Panel -->
+                    @if (highlightedNode()) {
+                      <div class="node-detail-panel animate-fade-in">
+                        <h5>📦 {{ highlightedNode() }}</h5>
+                        <div class="node-detail-body">
+                          <div class="detail-col">
+                            <p class="detail-label">Depends on</p>
+                            @if (getNodeDependsOn(highlightedNode()!).length > 0) {
+                              <ul class="dep-list">
+                                @for (dep of getNodeDependsOn(highlightedNode()!); track dep) {
+                                  <li (click)="highlightedNode.set(dep)" class="dep-item">{{ dep }}</li>
+                                }
+                              </ul>
+                            } @else {
+                              <p class="dep-none">No outgoing dependencies</p>
+                            }
+                          </div>
+                          <div class="detail-col">
+                            <p class="detail-label">Used by</p>
+                            @if (getNodeUsedBy(highlightedNode()!).length > 0) {
+                              <ul class="dep-list">
+                                @for (u of getNodeUsedBy(highlightedNode()!); track u) {
+                                  <li (click)="highlightedNode.set(u)" class="dep-item">{{ u }}</li>
+                                }
+                              </ul>
+                            } @else {
+                              <p class="dep-none">No incoming dependencies</p>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  } @else {
+                    <div class="empty-state-sm">
+                      <p>No package dependency data found. Ensure the project has been parsed successfully.</p>
+                    </div>
+                  }
+                </div>
+              }
+
+              <!-- ============ TAB: System Documentation ============ -->
+              @if (insightsTab() === 'docs') {
+                <div class="docs-tab-content">
+                  @if (loadingDocs()) {
+                    <div class="insights-loading"><span class="spinner-sm"></span> Generating system documentation...</div>
+                  } @else if (docsMarkdown()) {
+                    <div class="docs-actions-row">
+                      <button (click)="downloadDocs()" class="btn-download-docs">⬇ Download Markdown</button>
+                    </div>
+                    <div class="docs-viewer" [innerHTML]="parsedDocsHtml()"></div>
+                  } @else {
+                    <div class="empty-state-sm">
+                      <p>No documentation generated yet. Ensure the project has been parsed successfully.</p>
+                    </div>
+                  }
+                </div>
+              }
 
               <div class="insights-actions">
                 <button (click)="downloadIR()" class="btn-download-ir">Download Canonical IR JSON</button>
@@ -1241,6 +1422,365 @@ export interface GithubRepo {
       font-family: monospace;
     }
 
+    /* === Insight Tabs === */
+    .insights-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.75rem;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding-bottom: 0;
+    }
+
+    .tab-btn {
+      padding: 0.625rem 1.25rem;
+      border-radius: 10px 10px 0 0;
+      border: 1px solid transparent;
+      border-bottom: none;
+      background: transparent;
+      color: #64748b;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      letter-spacing: 0.01em;
+      position: relative;
+      bottom: -1px;
+    }
+
+    .tab-btn:hover {
+      color: #94a3b8;
+      background: rgba(255,255,255,0.04);
+    }
+
+    .tab-btn.active {
+      color: #a78bfa;
+      border-color: rgba(139,92,246,0.3);
+      border-bottom: 1px solid #020617;
+      background: rgba(139,92,246,0.07);
+    }
+
+    /* === Architecture Graph === */
+    .graph-tab-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .graph-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .graph-ctrl-btn {
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(139,92,246,0.3);
+      background: rgba(139,92,246,0.08);
+      color: #a78bfa;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      font-weight: 600;
+    }
+
+    .graph-ctrl-btn:hover {
+      background: rgba(139,92,246,0.2);
+      border-color: rgba(139,92,246,0.5);
+    }
+
+    .graph-zoom-label {
+      font-size: 0.8125rem;
+      color: #64748b;
+      font-variant-numeric: tabular-nums;
+      min-width: 42px;
+    }
+
+    .graph-selected-label {
+      font-size: 0.8125rem;
+      color: #a78bfa;
+      font-weight: 600;
+      background: rgba(139,92,246,0.12);
+      padding: 0.25rem 0.75rem;
+      border-radius: 99px;
+      border: 1px solid rgba(139,92,246,0.25);
+    }
+
+    .graph-viewport {
+      width: 100%;
+      height: 500px;
+      border: 1px solid rgba(139,92,246,0.15);
+      border-radius: 16px;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.04) 0%, transparent 70%), #080f1f;
+      cursor: grab;
+      position: relative;
+    }
+
+    .graph-viewport:active { cursor: grabbing; }
+
+    .graph-svg {
+      display: block;
+    }
+
+    .graph-edge {
+      stroke: rgba(99,102,241,0.35);
+      stroke-width: 1.5;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+
+    .graph-edge.edge-hi {
+      stroke: rgba(167,139,250,0.75);
+      stroke-width: 2.5;
+    }
+
+    .graph-node-group {
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+
+    .graph-node-group:hover .node-bg { opacity: 0.9; }
+
+    .node-bg {
+      fill: rgba(15,23,42,0.9);
+      stroke: none;
+    }
+
+    .node-ring {
+      fill: none;
+      stroke: rgba(99,102,241,0.5);
+      stroke-width: 1.5;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+
+    .node-ring.node-ring-hi {
+      stroke: #a78bfa;
+      stroke-width: 2.5;
+      filter: url(#glow-filter);
+    }
+
+    .node-bg.node-bg-hi {
+      fill: rgba(139,92,246,0.12);
+    }
+
+    .node-label {
+      fill: #e2e8f0;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Outfit','Inter',sans-serif;
+      pointer-events: none;
+      dy: -6px;
+    }
+
+    .node-sub {
+      fill: #64748b;
+      font-size: 9px;
+      font-family: 'Outfit','Inter',sans-serif;
+      pointer-events: none;
+    }
+
+    .graph-legend {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      font-size: 0.8125rem;
+      color: #64748b;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .legend-dot.node {
+      background: rgba(99,102,241,0.6);
+      border: 1.5px solid rgba(99,102,241,0.9);
+    }
+
+    .legend-dot.edge {
+      width: 20px;
+      height: 2px;
+      border-radius: 0;
+      background: rgba(99,102,241,0.6);
+    }
+
+    .legend-hint {
+      color: #475569;
+      font-size: 0.75rem;
+      margin-left: auto;
+    }
+
+    .node-detail-panel {
+      background: rgba(139,92,246,0.06);
+      border: 1px solid rgba(139,92,246,0.2);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
+    }
+
+    .node-detail-panel h5 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #c4b5fd;
+    }
+
+    .node-detail-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .detail-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #64748b;
+      margin: 0 0 0.5rem;
+    }
+
+    .dep-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .dep-item {
+      font-size: 0.8125rem;
+      color: #a78bfa;
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+
+    .dep-item:hover {
+      background: rgba(139,92,246,0.12);
+    }
+
+    .dep-none {
+      font-size: 0.8125rem;
+      color: #475569;
+      margin: 0;
+    }
+
+    /* === Documentation Viewer === */
+    .docs-tab-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .docs-actions-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .btn-download-docs {
+      padding: 0.5rem 1.125rem;
+      border-radius: 9px;
+      border: 1px solid rgba(16,185,129,0.3);
+      background: rgba(16,185,129,0.08);
+      color: #34d399;
+      font-size: 0.8125rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-download-docs:hover {
+      background: rgba(16,185,129,0.18);
+      border-color: rgba(16,185,129,0.5);
+    }
+
+    .docs-viewer {
+      background: rgba(15,23,42,0.5);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      padding: 2rem 2.5rem;
+      line-height: 1.7;
+      max-height: 560px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(139,92,246,0.3) transparent;
+    }
+
+    .docs-viewer :is(h1,h2,h3,h4) { color: #f1f5f9; margin: 1.25em 0 0.5em; }
+    .docs-viewer h1 { font-size: 1.5rem; font-weight: 800; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.4em; }
+    .docs-viewer h2 { font-size: 1.25rem; font-weight: 750; }
+    .docs-viewer h3 { font-size: 1.05rem; font-weight: 700; color: #a78bfa; }
+    .docs-viewer h4 { font-size: 0.95rem; font-weight: 700; color: #94a3b8; }
+    .docs-viewer p { color: #94a3b8; margin: 0.5em 0; }
+    .docs-viewer strong { color: #e2e8f0; }
+    .docs-viewer em { color: #c4b5fd; }
+    .docs-viewer code {
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      padding: 0.1em 0.4em;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.875em;
+    }
+    .docs-viewer pre {
+      background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 1em 0;
+    }
+    .docs-viewer pre code { background: transparent; padding: 0; }
+    .docs-viewer ul, .docs-viewer ol { color: #94a3b8; padding-left: 1.5em; margin: 0.5em 0; }
+    .docs-viewer li { margin: 0.25em 0; }
+    .docs-viewer table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin: 1em 0;
+    }
+    .docs-viewer th {
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      font-weight: 700;
+      border: 1px solid rgba(99,102,241,0.2);
+    }
+    .docs-viewer td {
+      padding: 0.5rem 0.75rem;
+      color: #94a3b8;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .docs-viewer tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+    .docs-viewer blockquote {
+      border-left: 3px solid rgba(139,92,246,0.5);
+      padding-left: 1rem;
+      margin: 0.75em 0;
+      color: #64748b;
+      font-style: italic;
+    }
+    .docs-viewer hr {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      margin: 1.5em 0;
+    }
+
     .insights-actions {
       display: flex;
       justify-content: flex-end;
@@ -1414,6 +1954,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   authService = inject(AuthService);
   private http = inject(HttpClient);
   private fb = inject(FormBuilder);
+  private sanitizer = inject(DomSanitizer);
 
   overview = signal<Overview | null>(null);
   projects = signal<Project[]>([]);
@@ -1439,6 +1980,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
   errorIR = signal<string | null>(null);
   selectedProjectName = signal('');
   selectedProjectId = signal('');
+
+  // Insights Tabs
+  insightsTab = signal<'symbols' | 'graph' | 'docs'>('symbols');
+
+  // Architecture Graph signals
+  graphData = signal<{ nodes: any[]; edges: any[] } | null>(null);
+  loadingGraph = signal(false);
+  graphZoom = signal(1);
+  graphPanX = signal(0);
+  graphPanY = signal(0);
+  highlightedNode = signal<string | null>(null);
+  graphSvgWidth = 900;
+  graphSvgHeight = 500;
+  private _nodePositions: Map<string, { x: number; y: number }> = new Map();
+  private _graphDragging = false;
+  private _graphLastMouse = { x: 0, y: 0 };
+
+  // Documentation signals
+  docsMarkdown = signal<string | null>(null);
+  loadingDocs = signal(false);
+
+  parsedDocsHtml = computed((): SafeHtml => {
+    const md = this.docsMarkdown();
+    if (!md) return '';
+    return this.sanitizer.bypassSecurityTrustHtml(this.parseMd(md));
+  });
 
   isImporting = signal(false);
   importError = signal<string | null>(null);
@@ -1604,6 +2171,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadingIR.set(true);
     this.errorIR.set(null);
     this.selectedProjectIR.set(null);
+    this.insightsTab.set('symbols');
+    this.graphData.set(null);
+    this.docsMarkdown.set(null);
+    this.highlightedNode.set(null);
+    this.graphZoom.set(1);
+    this.graphPanX.set(0);
+    this.graphPanY.set(0);
 
     // Scroll smoothly to the insights section
     setTimeout(() => {
@@ -1620,6 +2194,195 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.errorIR.set(err.error?.error || 'Failed to retrieve intermediate representation.');
       }
     });
+  }
+
+  setInsightsTab(tab: 'symbols' | 'graph' | 'docs'): void {
+    this.insightsTab.set(tab);
+    if (tab === 'graph' && !this.graphData() && !this.loadingGraph()) {
+      this.loadGraph();
+    }
+    if (tab === 'docs' && !this.docsMarkdown() && !this.loadingDocs()) {
+      this.loadDocs();
+    }
+  }
+
+  loadGraph(): void {
+    const id = this.selectedProjectId();
+    if (!id) return;
+    this.loadingGraph.set(true);
+    this.http.get<any>(`http://localhost:8080/api/v1/projects/${id}/graph`).subscribe({
+      next: (data) => {
+        this.graphData.set(data);
+        this.loadingGraph.set(false);
+        this._nodePositions.clear();
+        this.layoutGraphNodes(data.nodes || []);
+      },
+      error: () => {
+        this.loadingGraph.set(false);
+        this.graphData.set({ nodes: [], edges: [] });
+      }
+    });
+  }
+
+  layoutGraphNodes(nodes: any[]): void {
+    const n = nodes.length;
+    if (n === 0) return;
+    const cx = this.graphSvgWidth / 2;
+    const cy = this.graphSvgHeight / 2;
+    const radius = Math.min(cx, cy) - 70;
+    if (n === 1) {
+      this._nodePositions.set(nodes[0].id, { x: cx, y: cy });
+      return;
+    }
+    nodes.forEach((node, i) => {
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+      this._nodePositions.set(node.id, {
+        x: cx + radius * Math.cos(angle),
+        y: cy + radius * Math.sin(angle)
+      });
+    });
+  }
+
+  getNodePos(nodeId: string): { x: number; y: number } | undefined {
+    return this._nodePositions.get(nodeId);
+  }
+
+  getNodeShortName(nodeId: string): string {
+    // Truncate long package paths for display
+    const parts = nodeId.split('/');
+    const last = parts[parts.length - 1];
+    return last.length > 12 ? last.substring(0, 11) + '…' : last;
+  }
+
+  getNodeDependsOn(nodeId: string): string[] {
+    const edges = this.graphData()?.edges || [];
+    return edges.filter(e => e.from === nodeId).map(e => e.to);
+  }
+
+  getNodeUsedBy(nodeId: string): string[] {
+    const edges = this.graphData()?.edges || [];
+    return edges.filter(e => e.to === nodeId).map(e => e.from);
+  }
+
+  graphZoomIn(): void { this.graphZoom.update(z => Math.min(z + 0.15, 3)); }
+  graphZoomOut(): void { this.graphZoom.update(z => Math.max(z - 0.15, 0.3)); }
+  graphResetView(): void { this.graphZoom.set(1); this.graphPanX.set(0); this.graphPanY.set(0); }
+
+  onGraphWheel(e: WheelEvent): void {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    this.graphZoom.update(z => Math.min(3, Math.max(0.3, z + delta)));
+  }
+
+  onGraphMouseDown(e: MouseEvent): void {
+    this._graphDragging = true;
+    this._graphLastMouse = { x: e.clientX, y: e.clientY };
+  }
+
+  onGraphMouseMove(e: MouseEvent): void {
+    if (!this._graphDragging) return;
+    const dx = e.clientX - this._graphLastMouse.x;
+    const dy = e.clientY - this._graphLastMouse.y;
+    this.graphPanX.update(v => v + dx);
+    this.graphPanY.update(v => v + dy);
+    this._graphLastMouse = { x: e.clientX, y: e.clientY };
+  }
+
+  onGraphMouseUp(): void {
+    this._graphDragging = false;
+  }
+
+  loadDocs(): void {
+    const id = this.selectedProjectId();
+    if (!id) return;
+    this.loadingDocs.set(true);
+    this.http.get<any>(`http://localhost:8080/api/v1/projects/${id}/docs`).subscribe({
+      next: (data) => {
+        this.docsMarkdown.set(data.markdown || data.content || JSON.stringify(data));
+        this.loadingDocs.set(false);
+      },
+      error: () => {
+        this.loadingDocs.set(false);
+        this.docsMarkdown.set('');
+      }
+    });
+  }
+
+  downloadDocs(): void {
+    const md = this.docsMarkdown();
+    if (!md) return;
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${this.selectedProjectName()}-architecture.md`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  parseMd(md: string): string {
+    let html = md
+      // escape HTML
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      // fenced code blocks
+      .replace(/```([\w]*)\n([\s\S]*?)```/gm, (_: string, lang: string, code: string) =>
+        `<pre><code class="lang-${lang}">${code}</code></pre>`)
+      // inline code
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // headings
+      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      // bold & italic
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // horizontal rule
+      .replace(/^---+$/gm, '<hr>')
+      // blockquote
+      .replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
+      // unordered lists
+      .replace(/^[*\-] (.+)$/gm, '<li>$1</li>')
+      // ordered lists
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      // tables: header row
+      .replace(/^\|(.+)\|$/gm, (line: string) => {
+        const cols = line.split('|').slice(1, -1).map(c => c.trim());
+        if (cols.every(c => /^[-:]+$/.test(c))) return '<tr-sep>';
+        return '<tr>' + cols.map((c: string) => `<td>${c}</td>`).join('') + '</tr>';
+      })
+      // wrap consecutive <li> in <ul>
+      .replace(/(<li>.*<\/li>\n?)+/gs, (m: string) => `<ul>${m}</ul>`)
+      // wrap table rows
+      .replace(/(<tr>.*<\/tr>\n?)+(<tr-sep>\n?)?/gs, (m: string) => {
+        const rows = m.replace(/<tr-sep>\n?/g, '').trim();
+        if (!rows) return '';
+        const allRows = rows.split('</tr>').filter((r: string) => r.trim());
+        const header = allRows.shift()!.replace('<tr>', '') + '</tr>';
+        const body = allRows.map((r: string) => r.trim() + '</tr>').join('');
+        const hRow = header.replace(/<td>/g, '<th>').replace(/<\/td>/g, '</th>');
+        return `<table><thead><tr>${hRow}</thead><tbody>${body}</tbody></table>`;
+      })
+      // paragraphs (double newline)
+      .replace(/\n\n(?!<[uo]l|<pre|<h|<hr|<bl|<ta)/g, '</p><p>')
+      .replace(/^(?!<[houpt])(.+)$/gm, (line: string) => {
+        if (line.startsWith('<') || line.trim() === '') return line;
+        return line;
+      });
+    return `<p>${html}</p>`
+      .replace(/<p><\/p>/g, '')
+      .replace(/<p>(<[hH]\d)/g, '$1')
+      .replace(/(<\/h\d>)<\/p>/g, '$1')
+      .replace(/<p>(<ul)/g, '$1')
+      .replace(/(<\/ul>)<\/p>/g, '$1')
+      .replace(/<p>(<pre)/g, '$1')
+      .replace(/(<\/pre>)<\/p>/g, '$1')
+      .replace(/<p>(<hr>)<\/p>/g, '$1')
+      .replace(/<p>(<table)/g, '$1')
+      .replace(/(<\/table>)<\/p>/g, '$1')
+      .replace(/<p>(<blockquote)/g, '$1')
+      .replace(/(<\/blockquote>)<\/p>/g, '$1');
   }
 
   closeInsights(): void {

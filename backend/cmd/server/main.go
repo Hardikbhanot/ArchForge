@@ -91,6 +91,8 @@ func newMux(database *sql.DB) http.Handler {
 	// Parser Endpoints
 	mux.Handle("POST /api/v1/projects/{id}/parse", auth.AuthMiddleware(http.HandlerFunc(parserHandler.Parse)))
 	mux.Handle("GET /api/v1/projects/{id}/ir", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetIR)))
+	mux.Handle("GET /api/v1/projects/{id}/graph", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetGraph)))
+	mux.Handle("GET /api/v1/projects/{id}/docs", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetDocs)))
 
 	return corsMiddleware(mux)
 }

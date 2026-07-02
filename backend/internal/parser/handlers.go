@@ -127,3 +127,97 @@ func (h *ParserHandler) GetIR(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, irFile)
 }
+
+func (h *ParserHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "unauthorized"})
+		return
+	}
+
+	projectID := r.PathValue("id")
+	if projectID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "missing project ID"})
+		return
+	}
+
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "project not found"})
+		return
+	}
+
+	if proj.OwnerID != userID {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "forbidden"})
+		return
+	}
+
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	graph, err := CompileProjectGraph(irPath)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "IR metadata has not been generated for this project yet"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(graph)
+}
+
+func (h *ParserHandler) GetDocs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "unauthorized"})
+		return
+	}
+
+	projectID := r.PathValue("id")
+	if projectID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "missing project ID"})
+		return
+	}
+
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "project not found"})
+		return
+	}
+
+	if proj.OwnerID != userID {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "forbidden"})
+		return
+	}
+
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	docs, err := GenerateSystemDocs(irPath)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "IR metadata has not been generated for this project yet"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(docs)
+}
