@@ -59,6 +59,23 @@ func topLevelPkg(path string) string {
 	return parts[0]
 }
 
+// isNoisyDir returns true for directories that should be excluded from the graph:
+// _examples, _test dirs, testdata, vendor, .git, etc.
+func isNoisyDir(top string) bool {
+	if top == "" {
+		return true
+	}
+	// Exclude Go convention noise dirs
+	if strings.HasPrefix(top, "_") || strings.HasPrefix(top, ".") {
+		return true
+	}
+	switch top {
+	case "testdata", "vendor", "third_party", "node_modules", "dist", "build", "hack":
+		return true
+	}
+	return false
+}
+
 func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 	data, err := os.ReadFile(irPath)
 	if err != nil {
@@ -70,35 +87,51 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		return nil, fmt.Errorf("failed to unmarshal IR: %w", err)
 	}
 
-	// ── 1. Collect top-level package names and count files per package ──────
-	fileCount := make(map[string]int) // topPkg → count
+	// Root package label = project name (e.g. "gin", "cobra")
+	rootLabel := ir.Name
+	if rootLabel == "" {
+		rootLabel = "main"
+	}
+
+	// ── 1. Count files per top-level directory (source of truth for nodes) ──
+	fileCount := make(map[string]int) // topDir → count
 
 	for _, f := range ir.Files {
+		// Skip test files
+		if strings.HasSuffix(f.Path, "_test.go") {
+			continue
+		}
 		dir := filepath.Dir(f.Path)
+		var top string
 		if dir == "." {
-			dir = "main"
+			top = rootLabel // root-level files → project name
+		} else {
+			top = topLevelPkg(dir)
 		}
-		pkg := topLevelPkg(dir)
-		fileCount[pkg]++
+		if isNoisyDir(top) {
+			continue
+		}
+		fileCount[top]++
 	}
 
-	// Also seed from module list (catches packages with no files listed)
-	for _, m := range ir.Modules {
-		top := topLevelPkg(m)
-		if _, ok := fileCount[top]; !ok {
-			fileCount[top] = 0
-		}
-	}
-	// And from symbols
-	for _, sym := range ir.Symbols {
-		raw := ExtractPackage(sym.ID)
-		top := topLevelPkg(raw)
-		if _, ok := fileCount[top]; !ok {
-			fileCount[top] = 0
+	// If filtering left nothing, try again without test-file skip
+	if len(fileCount) == 0 {
+		for _, f := range ir.Files {
+			dir := filepath.Dir(f.Path)
+			var top string
+			if dir == "." {
+				top = rootLabel
+			} else {
+				top = topLevelPkg(dir)
+			}
+			if isNoisyDir(top) {
+				continue
+			}
+			fileCount[top]++
 		}
 	}
 
-	// ── 2. Sort packages by file count (desc) and cap at maxGraphNodes ───────
+	// ── 2. Sort by file count (desc) and cap at maxGraphNodes ────────────
 	type pkgEntry struct {
 		name  string
 		count int
@@ -117,13 +150,12 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		ranked = ranked[:maxGraphNodes]
 	}
 
-	// Build fast membership set for the chosen packages
 	chosen := make(map[string]bool, len(ranked))
 	for _, e := range ranked {
 		chosen[e.name] = true
 	}
 
-	// Create nodes
+	// ── 3. Create nodes ──────────────────────────────────────────────────
 	var nodes []GraphNode
 	for _, e := range ranked {
 		nodes = append(nodes, GraphNode{
@@ -134,45 +166,42 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		})
 	}
 
-	// ── 3. Build edges (top-level → top-level, skip self-loops) ────────────
+	// ── 4. Build edges ───────────────────────────────────────────────────
 	edgeWeights := make(map[string]int)
 
-	// 3a. Symbol-level relationships
+	// 4a. Symbol-level relationships
 	for _, rel := range ir.Relationships {
 		srcTop := topLevelPkg(ExtractPackage(rel.Source))
 		tgtTop := topLevelPkg(ExtractPackage(rel.Target))
-		if srcTop != tgtTop && chosen[srcTop] && chosen[tgtTop] {
-			edgeWeights[srcTop+"->"+tgtTop]++
+		if srcTop == tgtTop || !chosen[srcTop] || !chosen[tgtTop] {
+			continue
 		}
+		edgeWeights[srcTop+"->"+tgtTop]++
 	}
 
-	// 3b. File-level imports (fallback when relationships are absent)
+	// 4b. File-level import matching (fallback)
 	if len(edgeWeights) == 0 {
-		// Build set of internal module top-levels for matching
-		internalTops := make(map[string]bool)
-		for _, m := range ir.Modules {
-			internalTops[topLevelPkg(m)] = true
-		}
-		for name := range fileCount {
-			internalTops[topLevelPkg(name)] = true
-		}
-
 		for _, f := range ir.Files {
-			dir := filepath.Dir(f.Path)
-			if dir == "." {
-				dir = "main"
+			if strings.HasSuffix(f.Path, "_test.go") {
+				continue
 			}
-			srcTop := topLevelPkg(dir)
+			dir := filepath.Dir(f.Path)
+			var srcTop string
+			if dir == "." {
+				srcTop = rootLabel
+			} else {
+				srcTop = topLevelPkg(dir)
+			}
 			if !chosen[srcTop] {
 				continue
 			}
 			for _, imp := range f.Imports {
-				// Match the last segment of the import path against known top-level packages
+				// Walk import path segments right-to-left looking for a chosen package
 				impParts := strings.Split(imp, "/")
 				for i := len(impParts) - 1; i >= 0; i-- {
-					tgtTop := impParts[i]
-					if tgtTop != srcTop && chosen[tgtTop] && internalTops[tgtTop] {
-						edgeWeights[srcTop+"->"+tgtTop]++
+					tgt := impParts[i]
+					if tgt != srcTop && chosen[tgt] {
+						edgeWeights[srcTop+"->"+tgt]++
 						break
 					}
 				}
@@ -180,7 +209,7 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		}
 	}
 
-	// Create edges (only keep weight ≥ 1)
+	// ── 5. Create edges ──────────────────────────────────────────────────
 	var edges []GraphEdge
 	for key, weight := range edgeWeights {
 		parts := strings.SplitN(key, "->", 2)
@@ -203,6 +232,7 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 
 	return &GraphResponse{Nodes: nodes, Edges: edges}, nil
 }
+
 
 
 func GenerateSystemDocs(irPath string) (*DocsResponse, error) {
