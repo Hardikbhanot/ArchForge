@@ -65,7 +65,7 @@ export interface GithubRepo {
         </section>
 
         <!-- GitHub Repos Direct Import -->
-        <section class="card github-repos-card">
+        <section class="glass-panel github-repos-card animate-entry delay-100">
           <div class="card-title-row">
             <h3>Your GitHub Repositories</h3>
             @if (githubRepos().length > 0) {
@@ -82,7 +82,9 @@ export interface GithubRepo {
 
           @if (githubLoading()) {
             <div class="gh-loading-state">
-              <span class="spinner-sm"></span> Loading repositories...
+              <div class="skeleton-text" style="height: 48px; width: 100%; margin-bottom: 0.75rem;"></div>
+              <div class="skeleton-text" style="height: 48px; width: 100%; margin-bottom: 0.75rem;"></div>
+              <div class="skeleton-text" style="height: 48px; width: 100%;"></div>
             </div>
           } @else if (githubError()) {
             <div class="gh-error-state">
@@ -132,7 +134,7 @@ export interface GithubRepo {
         </section>
 
         <!-- Import Section -->
-        <section class="card import-card">
+        <section class="glass-panel import-card animate-entry delay-200">
           <h3>Import by URL</h3>
           <form [formGroup]="importForm" (ngSubmit)="onImport()" class="import-form">
             <div class="form-row">
@@ -179,7 +181,7 @@ export interface GithubRepo {
           @if (projects().length > 0) {
             <div class="projects-list">
               @for (p of projects(); track p.id) {
-                <div class="project-row" [class.status-failed]="p.status === 'FAILED'">
+                <div class="project-row glass-panel animate-entry" [class.status-failed]="p.status === 'FAILED'">
                   <div class="project-info">
                     <div class="title-row">
                       <h4>{{ p.name }}</h4>
@@ -237,7 +239,7 @@ export interface GithubRepo {
 
         <!-- Insights Display Section -->
         @if (selectedProjectIR() || loadingIR() || errorIR()) {
-          <section class="card insights-card animate-fade-in" id="insights-panel">
+          <section class="glass-panel insights-card animate-entry delay-200" id="insights-panel">
             <div class="insights-header">
               <div class="insights-title-row">
                 <h3>Codebase Insights: {{ selectedProjectName() }}</h3>
@@ -248,7 +250,8 @@ export interface GithubRepo {
 
             @if (loadingIR()) {
               <div class="insights-loading">
-                <span class="spinner-sm"></span> Loading intermediate representation analysis...
+                <div class="skeleton-text" style="height: 80px; width: 100%; margin-bottom: 1.5rem;"></div>
+                <div class="skeleton-text" style="height: 250px; width: 100%;"></div>
               </div>
             } @else if (errorIR()) {
               <div class="insights-error">
@@ -346,7 +349,10 @@ export interface GithubRepo {
               @if (insightsTab() === 'graph') {
                 <div class="graph-tab-content">
                   @if (loadingGraph()) {
-                    <div class="insights-loading"><span class="spinner-sm"></span> Building dependency graph...</div>
+                    <div class="insights-loading">
+                      <div class="skeleton-text" style="height: 40px; width: 200px; margin-bottom: 1rem;"></div>
+                      <div class="skeleton-text" style="height: 400px; width: 100%; border-radius: 16px;"></div>
+                    </div>
                   } @else if (graphData()) {
                     <!-- Graph Controls -->
                     <div class="graph-controls">
@@ -502,7 +508,10 @@ export interface GithubRepo {
               @if (insightsTab() === 'docs') {
                 <div class="docs-tab-content">
                   @if (loadingDocs()) {
-                    <div class="insights-loading"><span class="spinner-sm"></span> Generating system documentation...</div>
+                    <div class="insights-loading">
+                      <div class="skeleton-text" style="height: 40px; width: 200px; margin-bottom: 1rem;"></div>
+                      <div class="skeleton-text" style="height: 400px; width: 100%; border-radius: 16px;"></div>
+                    </div>
                   } @else if (docsMarkdown()) {
                     <div class="docs-actions-row">
                       <button (click)="downloadDocs()" class="btn-download-docs">⬇ Download Markdown</button>
@@ -526,7 +535,7 @@ export interface GithubRepo {
         <!-- Overview details -->
         @if (overview()) {
           <div class="grid-layout">
-            <div class="card overview-card">
+            <div class="glass-panel overview-card animate-entry delay-300">
               <div class="card-header">
                 <h3>System Overview</h3>
                 <span class="badge">{{ overview()?.status }}</span>
@@ -538,7 +547,7 @@ export interface GithubRepo {
               </div>
             </div>
 
-            <div class="card features-card">
+            <div class="glass-panel features-card animate-entry delay-300">
               <h3>MVP Core Features</h3>
               <ul class="feature-list">
                 @for (feat of overview()?.mvp; track feat) {
@@ -559,9 +568,7 @@ export interface GithubRepo {
       position: relative;
       width: 100vw;
       min-height: 100vh;
-      background: #020617;
-      color: #f8fafc;
-      font-family: 'Outfit', 'Inter', sans-serif;
+      /* Background and font handled by global styles */
       box-sizing: border-box;
       overflow-x: hidden;
     }
@@ -580,13 +587,13 @@ export interface GithubRepo {
     .glow-mesh-1 {
       top: -20%;
       left: -10%;
-      background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+      background: radial-gradient(circle, var(--accent-indigo) 0%, transparent 70%);
     }
 
     .glow-mesh-2 {
       bottom: -10%;
       right: -10%;
-      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+      background: radial-gradient(circle, var(--accent-violet) 0%, transparent 70%);
     }
 
     .header {
@@ -596,9 +603,9 @@ export interface GithubRepo {
       justify-content: space-between;
       align-items: center;
       padding: 1.5rem 3rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      background: rgba(15, 23, 42, 0.2);
-      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(16px);
     }
 
     .brand {
@@ -1379,8 +1386,8 @@ export interface GithubRepo {
     }
 
     .sym-id-code {
-      font-family: monospace;
-      font-weight: 700;
+      font-family: var(--font-mono);
+      font-weight: 500;
       color: #f1f5f9;
     }
 
@@ -1433,52 +1440,49 @@ export interface GithubRepo {
       background: rgba(255, 255, 255, 0.03);
       padding: 0.15rem 0.4rem;
       border-radius: 4px;
-      font-family: monospace;
+      font-family: var(--font-mono);
     }
 
     .file-path-col {
       font-size: 0.8125rem;
       color: #64748b;
-      font-family: monospace;
+      font-family: var(--font-mono);
     }
 
     /* === Insight Tabs === */
     .insights-tabs {
-      display: flex;
-      gap: 0.5rem;
+      display: inline-flex;
+      gap: 0.25rem;
       margin-bottom: 1.75rem;
-      border-bottom: 1px solid rgba(255,255,255,0.07);
-      padding-bottom: 0;
+      background: rgba(15, 23, 42, 0.4);
+      padding: 0.35rem;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
     }
 
     .tab-btn {
-      padding: 0.625rem 1.25rem;
-      border-radius: 10px 10px 0 0;
-      border: 1px solid transparent;
-      border-bottom: none;
+      padding: 0.5rem 1.25rem;
+      border-radius: 8px;
+      border: none;
       background: transparent;
-      color: #64748b;
+      color: var(--text-secondary);
       font-size: 0.875rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
-      font-family: inherit;
-      letter-spacing: 0.01em;
-      position: relative;
-      bottom: -1px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .tab-btn:hover {
-      color: #94a3b8;
-      background: rgba(255,255,255,0.04);
+      color: var(--text-primary);
+      background: rgba(255,255,255,0.05);
     }
 
     .tab-btn.active {
-      color: #a78bfa;
-      border-color: rgba(139,92,246,0.3);
-      border-bottom: 1px solid #020617;
-      background: rgba(139,92,246,0.07);
+      color: var(--text-primary);
+      background: var(--accent-indigo);
+      box-shadow: 0 2px 8px var(--accent-indigo-glow);
     }
+
 
     /* === Architecture Graph === */
     .graph-tab-content {
