@@ -391,15 +391,15 @@ export interface GithubRepo {
 
                         <g [attr.transform]="'translate(' + graphPanX() + ',' + graphPanY() + ') scale(' + graphZoom() + ')'">
                           <!-- Edges -->
-                          @for (edge of graphData()?.edges; track edge.from + edge.to) {
+                          @for (edge of graphData()?.edges; track edge.source + edge.target) {
                             <line
-                              [attr.x1]="getNodePos(edge.from)?.x"
-                              [attr.y1]="getNodePos(edge.from)?.y"
-                              [attr.x2]="getNodePos(edge.to)?.x"
-                              [attr.y2]="getNodePos(edge.to)?.y"
-                              [class.edge-hi]="highlightedNode() === edge.from || highlightedNode() === edge.to"
+                              [attr.x1]="getNodePos(edge.source)?.x"
+                              [attr.y1]="getNodePos(edge.source)?.y"
+                              [attr.x2]="getNodePos(edge.target)?.x"
+                              [attr.y2]="getNodePos(edge.target)?.y"
+                              [class.edge-hi]="highlightedNode() === edge.source || highlightedNode() === edge.target"
                               class="graph-edge"
-                              [attr.marker-end]="(highlightedNode() === edge.from || highlightedNode() === edge.to) ? 'url(#arrow-hi)' : 'url(#arrow)'"
+                              [attr.marker-end]="(highlightedNode() === edge.source || highlightedNode() === edge.target) ? 'url(#arrow-hi)' : 'url(#arrow)'"
                             />
                           }
 
@@ -422,9 +422,7 @@ export interface GithubRepo {
                                 [class.node-ring-hi]="highlightedNode() === node.id"
                               />
                               <text class="node-label" text-anchor="middle" dominant-baseline="middle">{{ getNodeShortName(node.id) }}</text>
-                              @if (node.file_count) {
-                                <text class="node-sub" text-anchor="middle" dominant-baseline="middle" dy="16">{{ node.file_count }} files</text>
-                              }
+                              <text class="node-sub" text-anchor="middle" dominant-baseline="middle" dy="16">{{ node.file_count ? node.file_count + ' files' : node.kind }}</text>
                             </g>
                           }
                         </g>
@@ -2256,12 +2254,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   getNodeDependsOn(nodeId: string): string[] {
     const edges = this.graphData()?.edges || [];
-    return edges.filter(e => e.from === nodeId).map(e => e.to);
+    return edges.filter((e: any) => e.source === nodeId).map((e: any) => e.target);
   }
 
   getNodeUsedBy(nodeId: string): string[] {
     const edges = this.graphData()?.edges || [];
-    return edges.filter(e => e.to === nodeId).map(e => e.from);
+    return edges.filter((e: any) => e.target === nodeId).map((e: any) => e.source);
   }
 
   graphZoomIn(): void { this.graphZoom.update(z => Math.min(z + 0.15, 3)); }

@@ -11,9 +11,10 @@ import (
 )
 
 type GraphNode struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"` // "package", "file", "symbol"
+	ID        string `json:"id"`
+	Label     string `json:"label"`
+	Kind      string `json:"kind"` // "package", "file", "symbol"
+	FileCount int    `json:"file_count"`
 }
 
 type GraphEdge struct {
@@ -59,6 +60,14 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 
 	packageSet := make(map[string]bool)
 	symbolPackageMap := make(map[string]string)
+	packageFileCount := make(map[string]int)
+
+	// Build a set of internal module names for fast lookup
+	internalModules := make(map[string]bool)
+	for _, m := range ir.Modules {
+		internalModules[m] = true
+		packageSet[m] = true
+	}
 
 	// Collect all packages from symbols and build symbol-to-package lookup map
 	for _, sym := range ir.Symbols {
@@ -67,18 +76,32 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		symbolPackageMap[sym.ID] = pkg
 	}
 
-	// Also verify that packages defined in Project IR modules are accounted for
-	for _, m := range ir.Modules {
-		packageSet[m] = true
+	// Count files per package by directory
+	for _, f := range ir.Files {
+		dir := filepath.Dir(f.Path)
+		// Normalize root-level files to the repo name or "main"
+		if dir == "." {
+			dir = "main"
+		}
+		// Map the directory path segment to an internal module if possible
+		dirParts := strings.Split(dir, "/")
+		pkg := dirParts[0]
+		if len(dirParts) > 1 && !internalModules[dirParts[0]] {
+			// use full directory as package name
+			pkg = dir
+		}
+		packageFileCount[pkg]++
+		packageSet[pkg] = true
 	}
 
 	// Create package nodes
 	var nodes []GraphNode
 	for pkg := range packageSet {
 		nodes = append(nodes, GraphNode{
-			ID:    pkg,
-			Label: pkg,
-			Kind:  "package",
+			ID:        pkg,
+			Label:     pkg,
+			Kind:      "package",
+			FileCount: packageFileCount[pkg],
 		})
 	}
 
@@ -90,6 +113,7 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 	// Build package-to-package dependency edge count
 	edgeWeights := make(map[string]int) // "sourcePkg->targetPkg" -> weight
 
+	// 1. Derive edges from symbol-level relationships (if present)
 	for _, rel := range ir.Relationships {
 		srcPkg, srcOk := symbolPackageMap[rel.Source]
 		tgtPkg, tgtOk := symbolPackageMap[rel.Target]
@@ -108,15 +132,39 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 		}
 	}
 
+	// 2. Derive edges from file-level imports (catches repos with no symbol relationships)
+	if len(edgeWeights) == 0 {
+		for _, f := range ir.Files {
+			// Determine the source package from the file's directory
+			dir := filepath.Dir(f.Path)
+			if dir == "." {
+				dir = "main"
+			}
+			dirParts := strings.Split(dir, "/")
+			srcPkg := dirParts[0]
+
+			for _, imp := range f.Imports {
+				// Match import path against known internal modules
+				// e.g. import "github.com/go-playground/validator/v10/translations/en" -> target "en"
+				for mod := range internalModules {
+					if mod != srcPkg && (imp == mod || strings.HasSuffix(imp, "/"+mod)) {
+						key := fmt.Sprintf("%s->%s", srcPkg, mod)
+						edgeWeights[key]++
+					}
+				}
+			}
+		}
+	}
+
 	// Create package edges
 	var edges []GraphEdge
 	for key, weight := range edgeWeights {
-		parts := strings.Split(key, "->")
+		parts := strings.SplitN(key, "->", 2)
 		if len(parts) == 2 {
 			edges = append(edges, GraphEdge{
 				Source: parts[0],
 				Target: parts[1],
-				Type:   "CALLS",
+				Type:   "IMPORTS",
 				Weight: weight,
 			})
 		}
