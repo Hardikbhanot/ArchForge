@@ -200,23 +200,29 @@ export interface GithubRepo {
                     }
                   </div>
                   <div class="project-actions">
-                    @if (p.status === 'FAILED') {
-                      <div class="failed-action-row">
+                    <div class="action-btn-row">
+                      @if (p.status === 'FAILED') {
                         <p class="error-desc">{{ p.error || 'Cloning task terminated unexpectedly' }}</p>
                         <button (click)="analyzeProject(p)" class="btn-action-primary">Re-Analyze</button>
-                      </div>
-                    } @else if (p.status === 'COMPLETED') {
-                      <button (click)="analyzeProject(p)" class="btn-action-primary">Analyze Codebase</button>
-                    } @else if (p.status === 'PARSING') {
-                      <p class="parsing-desc">Extracting AST symbols...</p>
-                    } @else if (p.status === 'PARSED') {
-                      <div class="action-btn-row">
+                      } @else if (p.status === 'COMPLETED') {
+                        <button (click)="analyzeProject(p)" class="btn-action-primary">Analyze Codebase</button>
+                      } @else if (p.status === 'PARSING') {
+                        <p class="parsing-desc">Extracting AST symbols...</p>
+                      } @else if (p.status === 'PARSED') {
                         <button (click)="viewInsights(p)" class="btn-action-success">View Insights</button>
                         <button (click)="downloadIRDirect(p)" class="btn-action-outline">Download IR</button>
-                      </div>
-                    } @else {
-                      <p class="cloning-desc">Running git clone on server...</p>
-                    }
+                      } @else {
+                        <p class="cloning-desc">Running git clone on server...</p>
+                      }
+
+                      <button 
+                        (click)="deleteProject(p)" 
+                        [disabled]="isImporting() || p.status === 'CLONING' || p.status === 'PARSING'" 
+                        class="btn-action-delete"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
               }
@@ -977,6 +983,33 @@ export interface GithubRepo {
       color: white;
     }
 
+    .btn-action-delete {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+      font-weight: 650;
+      font-size: 0.8125rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-action-delete:hover:not(:disabled) {
+      background: #ef4444;
+      color: white;
+      border-color: #ef4444;
+      box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-action-delete:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      border-color: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.02);
+      color: #64748b;
+    }
+
     /* Insights Section Styling */
     .insights-card {
       border: 1px solid rgba(139, 92, 246, 0.2);
@@ -1647,6 +1680,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!path) return '';
     const parts = path.split('/');
     return parts[parts.length - 1];
+  }
+
+  deleteProject(proj: Project): void {
+    if (!confirm(`Are you sure you want to permanently delete repository "${proj.name}" and all of its parsed insights?`)) {
+      return;
+    }
+
+    this.http.delete<any>(`http://localhost:8080/api/v1/projects/${proj.id}`).subscribe({
+      next: () => {
+        this.projects.update(list => list.filter(p => p.id !== proj.id));
+        if (this.selectedProjectId() === proj.id) {
+          this.closeInsights();
+        }
+      },
+      error: (err) => {
+        alert(err.error?.error || 'Failed to delete repository.');
+      }
+    });
   }
 
   logout(): void {

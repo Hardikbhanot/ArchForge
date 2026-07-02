@@ -39,6 +39,7 @@ type UserStore interface {
 	GetByEmail(email string) (*User, error)
 	GetByUsername(username string) (*User, error)
 	GetByID(id string) (*User, error)
+	UpdateGithubToken(id string, token string) error
 }
 
 type InMemoryUserStore struct {
@@ -105,4 +106,16 @@ func (s *InMemoryUserStore) GetByID(id string) (*User, error) {
 		return nil, ErrUserNotFound
 	}
 	return user, nil
+}
+
+func (s *InMemoryUserStore) UpdateGithubToken(id string, token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, exists := s.users[id]
+	if !exists {
+		return ErrUserNotFound
+	}
+	user.GithubAccessToken = token
+	return nil
 }

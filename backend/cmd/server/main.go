@@ -1,11 +1,13 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 
 	"github.com/hardikbhanot/archforge/backend/internal/auth"
+	"github.com/hardikbhanot/archforge/backend/internal/db"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
 	"github.com/joho/godotenv"
@@ -32,16 +34,16 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func newMux() http.Handler {
+func newMux(database *sql.DB) http.Handler {
 	mux := http.NewServeMux()
 
-	// Initialize Auth structures
-	userStore := auth.NewInMemoryUserStore()
+	// Initialize Auth structures (using Postgres)
+	userStore := auth.NewPostgresUserStore(database)
 	authHandler := auth.NewAuthHandler(userStore)
 	githubHandler := auth.NewGithubHandler(userStore)
 
-	// Initialize Project structures
-	projectStore := project.NewInMemoryProjectStore()
+	// Initialize Project structures (using Postgres)
+	projectStore := project.NewPostgresProjectStore(database)
 	cloner := project.NewCloner(projectStore, "./data/repositories")
 	projectHandler := project.NewProjectHandler(projectStore, cloner)
 
@@ -84,6 +86,7 @@ func newMux() http.Handler {
 	mux.Handle("POST /api/v1/projects", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Import)))
 	mux.Handle("GET /api/v1/projects", auth.AuthMiddleware(http.HandlerFunc(projectHandler.List)))
 	mux.Handle("GET /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Get)))
+	mux.Handle("DELETE /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Delete)))
 
 	// Parser Endpoints
 	mux.Handle("POST /api/v1/projects/{id}/parse", auth.AuthMiddleware(http.HandlerFunc(parserHandler.Parse)))
@@ -98,8 +101,15 @@ func main() {
 		log.Println("No .env file found, relying on system environment variables")
 	}
 
+	// Connect to PostgreSQL database
+	database, err := db.InitDB()
+	if err != nil {
+		log.Fatalf("failed to initialize database: %v", err)
+	}
+	defer database.Close()
+
 	log.Println("ArchForge API listening on :8080")
-	if err := http.ListenAndServe(":8080", newMux()); err != nil {
+	if err := http.ListenAndServe(":8080", newMux(database)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
