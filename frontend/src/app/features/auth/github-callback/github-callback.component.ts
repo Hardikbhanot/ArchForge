@@ -188,13 +188,8 @@ export class GithubCallbackComponent implements OnInit {
   private exchangeCode(code: string): void {
     this.http.get<AuthResponse>(`http://localhost:8080/api/v1/auth/github/callback?code=${code}`).subscribe({
       next: (res) => {
-        // Update user state in AuthService
-        localStorage.setItem('af_token', res.token);
-        localStorage.setItem('af_user', JSON.stringify(res.user));
-        // Force reload / routing update
-        this.router.navigate(['/']).then(() => {
-          window.location.reload();
-        });
+        this.authService.handleAuthentication(res.token, res.user);
+        this.router.navigate(['/']);
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to authenticate with GitHub.');
