@@ -164,8 +164,16 @@ func (h *ParserHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
-	graph, err := CompileProjectGraph(irPath)
-	if err != nil {
+
+	// Optional: drill into a specific package's files via ?pkg=<name>
+	pkg := r.URL.Query().Get("pkg")
+	var (graph *GraphResponse; graphErr error)
+	if pkg != "" {
+		graph, graphErr = CompileFileGraph(irPath, pkg)
+	} else {
+		graph, graphErr = CompileProjectGraph(irPath)
+	}
+	if graphErr != nil {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(errorResponse{Error: "IR metadata has not been generated for this project yet"})
 		return

@@ -354,8 +354,17 @@ export interface GithubRepo {
                       <button (click)="graphZoomOut()" class="graph-ctrl-btn" title="Zoom Out">－</button>
                       <button (click)="graphResetView()" class="graph-ctrl-btn" title="Reset View">⊙</button>
                       <span class="graph-zoom-label">{{ (graphZoom() * 100) | number:'1.0-0' }}%</span>
+                      <!-- Breadcrumb -->
+                      <span class="graph-breadcrumb">
+                        <span (click)="drillBack()" [class.graph-breadcrumb-link]="graphPkg()">All Packages</span>
+                        @if (graphPkg()) {
+                          <span class="graph-breadcrumb-sep">›</span>
+                          <span class="graph-breadcrumb-current">{{ graphPkg() }}</span>
+                          <button (click)="drillBack()" class="graph-ctrl-btn graph-back-btn">← Back</button>
+                        }
+                      </span>
                       @if (highlightedNode()) {
-                        <span class="graph-selected-label">📦 {{ highlightedNode() }}</span>
+                        <span class="graph-selected-label">{{ graphPkg() ? '📄' : '📦' }} {{ getNodeShortName(highlightedNode()!) }}</span>
                         <button (click)="highlightedNode.set(null)" class="graph-ctrl-btn">✕ Clear</button>
                       }
                     </div>
@@ -408,21 +417,24 @@ export interface GithubRepo {
                             <g 
                               class="graph-node-group"
                               [class.node-hi]="highlightedNode() === node.id"
+                              [class.node-external]="node.kind === 'external'"
                               [attr.transform]="'translate(' + getNodePos(node.id)?.x + ',' + getNodePos(node.id)?.y + ')'"
                               (click)="highlightedNode.set(highlightedNode() === node.id ? null : node.id)"
                             >
                               <circle 
-                                r="42"
+                                [attr.r]="node.kind === 'external' ? 34 : 42"
                                 class="node-bg"
                                 [class.node-bg-hi]="highlightedNode() === node.id"
+                                [class.node-bg-ext]="node.kind === 'external'"
                               />
                               <circle 
-                                r="42"
+                                [attr.r]="node.kind === 'external' ? 34 : 42"
                                 class="node-ring"
                                 [class.node-ring-hi]="highlightedNode() === node.id"
+                                [class.node-ring-ext]="node.kind === 'external'"
                               />
                               <text class="node-label" text-anchor="middle" dominant-baseline="middle">{{ getNodeShortName(node.id) }}</text>
-                              <text class="node-sub" text-anchor="middle" dominant-baseline="middle" dy="16">{{ node.file_count ? node.file_count + ' files' : node.kind }}</text>
+                              <text class="node-sub" text-anchor="middle" dominant-baseline="middle" dy="16">{{ node.kind === 'file' ? 'file' : node.kind === 'external' ? 'pkg' : (node.file_count ? node.file_count + ' files' : 'pkg') }}</text>
                             </g>
                           }
                         </g>
@@ -431,22 +443,32 @@ export interface GithubRepo {
 
                     <!-- Graph Legend -->
                     <div class="graph-legend">
-                      <span class="legend-item"><span class="legend-dot node"></span> Package</span>
-                      <span class="legend-item"><span class="legend-dot edge"></span> Dependency</span>
-                      <span class="legend-hint">Click a node to highlight connections · Scroll or pinch to zoom · Drag to pan</span>
+                      @if (graphPkg()) {
+                        <span class="legend-item"><span class="legend-dot node"></span> File</span>
+                        <span class="legend-item"><span class="legend-dot ext"></span> External pkg</span>
+                      } @else {
+                        <span class="legend-item"><span class="legend-dot node"></span> Package</span>
+                      }
+                      <span class="legend-item"><span class="legend-dot edge"></span> Imports</span>
+                      <span class="legend-hint">Click a node to highlight · Double-click package to drill in · Scroll to zoom · Drag to pan</span>
                     </div>
 
                     <!-- Node Detail Panel -->
                     @if (highlightedNode()) {
                       <div class="node-detail-panel animate-fade-in">
-                        <h5>📦 {{ highlightedNode() }}</h5>
+                        <div class="node-detail-header">
+                          <h5>{{ getHighlightedNodeKind() === 'file' ? '📄' : getHighlightedNodeKind() === 'external' ? '📦' : '📦' }} {{ getNodeShortName(highlightedNode()!) }}</h5>
+                          @if (getHighlightedNodeKind() === 'package') {
+                            <button class="btn-drill-in" (dblclick)="drillInto(highlightedNode()!)" (click)="drillInto(highlightedNode()!)">Explore files →</button>
+                          }
+                        </div>
                         <div class="node-detail-body">
                           <div class="detail-col">
-                            <p class="detail-label">Depends on</p>
+                            <p class="detail-label">Imports</p>
                             @if (getNodeDependsOn(highlightedNode()!).length > 0) {
                               <ul class="dep-list">
                                 @for (dep of getNodeDependsOn(highlightedNode()!); track dep) {
-                                  <li (click)="highlightedNode.set(dep)" class="dep-item">{{ dep }}</li>
+                                  <li (click)="highlightedNode.set(dep)" class="dep-item">{{ getNodeShortName(dep) }}</li>
                                 }
                               </ul>
                             } @else {
@@ -454,11 +476,11 @@ export interface GithubRepo {
                             }
                           </div>
                           <div class="detail-col">
-                            <p class="detail-label">Used by</p>
+                            <p class="detail-label">Imported by</p>
                             @if (getNodeUsedBy(highlightedNode()!).length > 0) {
                               <ul class="dep-list">
                                 @for (u of getNodeUsedBy(highlightedNode()!); track u) {
-                                  <li (click)="highlightedNode.set(u)" class="dep-item">{{ u }}</li>
+                                  <li (click)="highlightedNode.set(u)" class="dep-item">{{ getNodeShortName(u) }}</li>
                                 }
                               </ul>
                             } @else {
@@ -1490,6 +1512,41 @@ export interface GithubRepo {
       border-color: rgba(139,92,246,0.5);
     }
 
+    .graph-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-left: 0.5rem;
+    }
+
+    .graph-breadcrumb-link {
+      cursor: pointer;
+      color: #a78bfa;
+      transition: color 0.2s;
+    }
+
+    .graph-breadcrumb-link:hover {
+      color: #c4b5fd;
+      text-decoration: underline;
+    }
+
+    .graph-breadcrumb-sep {
+      color: #475569;
+    }
+
+    .graph-breadcrumb-current {
+      color: #f1f5f9;
+      font-weight: 600;
+    }
+
+    .graph-back-btn {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      margin-left: 0.5rem;
+    }
+
     .graph-zoom-label {
       font-size: 0.8125rem;
       color: #64748b;
@@ -1564,6 +1621,19 @@ export interface GithubRepo {
       fill: rgba(139,92,246,0.12);
     }
 
+    .node-bg-ext {
+      fill: rgba(30,41,59,0.9);
+    }
+
+    .node-ring-ext {
+      stroke: rgba(100,116,139,0.5);
+      stroke-dasharray: 4 2;
+    }
+
+    .node-ring.node-ring-ext.node-ring-hi {
+      stroke: #94a3b8;
+    }
+
     .node-label {
       fill: #e2e8f0;
       font-size: 11px;
@@ -1607,6 +1677,11 @@ export interface GithubRepo {
       border: 1.5px solid rgba(99,102,241,0.9);
     }
 
+    .legend-dot.ext {
+      background: rgba(100,116,139,0.6);
+      border: 1.5px dashed rgba(100,116,139,0.9);
+    }
+
     .legend-dot.edge {
       width: 20px;
       height: 2px;
@@ -1627,11 +1702,35 @@ export interface GithubRepo {
       padding: 1.25rem 1.5rem;
     }
 
+    .node-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
     .node-detail-panel h5 {
-      margin: 0 0 1rem;
+      margin: 0;
       font-size: 1rem;
       font-weight: 700;
       color: #c4b5fd;
+    }
+
+    .btn-drill-in {
+      background: rgba(139,92,246,0.15);
+      border: 1px solid rgba(139,92,246,0.4);
+      color: #c4b5fd;
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-drill-in:hover {
+      background: rgba(139,92,246,0.25);
+      border-color: #a78bfa;
     }
 
     .node-detail-body {
@@ -1989,6 +2088,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   graphPanX = signal(0);
   graphPanY = signal(0);
   highlightedNode = signal<string | null>(null);
+  graphPkg = signal<string | null>(null); // null = package-level view, string = file-level drill-in
   graphSvgWidth = 900;
   graphSvgHeight = 500;
   private _graphDragging = false;
@@ -2195,6 +2295,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.graphData.set(null);
     this.docsMarkdown.set(null);
     this.highlightedNode.set(null);
+    this.graphPkg.set(null);
     this.graphZoom.set(1);
     this.graphPanX.set(0);
     this.graphPanY.set(0);
@@ -2226,11 +2327,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
-  loadGraph(): void {
+  loadGraph(pkg: string | null = null): void {
     const id = this.selectedProjectId();
     if (!id) return;
     this.loadingGraph.set(true);
-    this.http.get<any>(`http://localhost:8080/api/v1/projects/${id}/graph`).subscribe({
+    let url = `http://localhost:8080/api/v1/projects/${id}/graph`;
+    if (pkg) {
+      url += `?pkg=${encodeURIComponent(pkg)}`;
+    }
+    this.http.get<any>(url).subscribe({
       next: (data) => {
         this.graphData.set(data);
         this.loadingGraph.set(false);
@@ -2240,6 +2345,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.graphData.set({ nodes: [], edges: [] });
       }
     });
+  }
+
+  drillInto(pkg: string): void {
+    this.graphPkg.set(pkg);
+    this.highlightedNode.set(null);
+    this.graphResetView();
+    this.loadGraph(pkg);
+  }
+
+  drillBack(): void {
+    if (!this.graphPkg()) return;
+    this.graphPkg.set(null);
+    this.highlightedNode.set(null);
+    this.graphResetView();
+    this.loadGraph();
+  }
+
+  getHighlightedNodeKind(): string {
+    const id = this.highlightedNode();
+    if (!id) return '';
+    const node = this.graphData()?.nodes?.find((n: any) => n.id === id);
+    return node ? node.kind : '';
   }
 
   getNodePos(nodeId: string): { x: number; y: number } | undefined {

@@ -233,6 +233,146 @@ func CompileProjectGraph(irPath string) (*GraphResponse, error) {
 	return &GraphResponse{Nodes: nodes, Edges: edges}, nil
 }
 
+// CompileFileGraph returns a file-level graph for one top-level package.
+// Nodes = .go source files in that package dir.
+// Edges = file → sibling package that file imports (project-internal only).
+func CompileFileGraph(irPath, targetPkg string) (*GraphResponse, error) {
+	data, err := os.ReadFile(irPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IR file: %w", err)
+	}
+	var ir ProjectIR
+	if err := json.Unmarshal(data, &ir); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal IR: %w", err)
+	}
+
+	rootLabel := ir.Name
+	if rootLabel == "" {
+		rootLabel = "main"
+	}
+
+	// ── Collect all known top-level packages (for edge targets) ──────────
+	knownPkgs := make(map[string]bool)
+	for _, f := range ir.Files {
+		if strings.HasSuffix(f.Path, "_test.go") {
+			continue
+		}
+		dir := filepath.Dir(f.Path)
+		var top string
+		if dir == "." {
+			top = rootLabel
+		} else {
+			top = topLevelPkg(dir)
+		}
+		if !isNoisyDir(top) {
+			knownPkgs[top] = true
+		}
+	}
+
+	// ── Collect files that belong to targetPkg ───────────────────────────
+	type fileInfo struct {
+		path    string
+		label   string
+		imports []string
+	}
+	var pkgFiles []fileInfo
+
+	for _, f := range ir.Files {
+		if strings.HasSuffix(f.Path, "_test.go") {
+			continue
+		}
+		dir := filepath.Dir(f.Path)
+		var top string
+		if dir == "." {
+			top = rootLabel
+		} else {
+			top = topLevelPkg(dir)
+		}
+		if top != targetPkg {
+			continue
+		}
+		label := filepath.Base(f.Path) // e.g. "context.go"
+		pkgFiles = append(pkgFiles, fileInfo{
+			path:    f.Path,
+			label:   label,
+			imports: f.Imports,
+		})
+	}
+
+	if len(pkgFiles) == 0 {
+		return &GraphResponse{Nodes: []GraphNode{}, Edges: []GraphEdge{}}, nil
+	}
+
+	// Sort by name for determinism
+	sort.Slice(pkgFiles, func(i, j int) bool {
+		return pkgFiles[i].label < pkgFiles[j].label
+	})
+
+	// ── Build file nodes ─────────────────────────────────────────────────
+	var nodes []GraphNode
+	fileIDs := make(map[string]bool)
+	for _, f := range pkgFiles {
+		nodes = append(nodes, GraphNode{
+			ID:    f.path,
+			Label: f.label,
+			Kind:  "file",
+		})
+		fileIDs[f.path] = true
+	}
+
+	// ── Build external package nodes & edges ─────────────────────────────
+	// Only add edges to OTHER known project packages (not stdlib/third-party)
+	extPkgSeen := make(map[string]bool)
+	edgeWeights := make(map[string]int)
+
+	for _, f := range pkgFiles {
+		for _, imp := range f.imports {
+			// Walk right-to-left to find a known project package
+			parts := strings.Split(imp, "/")
+			for i := len(parts) - 1; i >= 0; i-- {
+				tgt := parts[i]
+				if tgt != targetPkg && knownPkgs[tgt] {
+					edgeWeights[f.path+"->"+tgt]++
+					extPkgSeen[tgt] = true
+					break
+				}
+			}
+		}
+	}
+
+	// Add external package nodes (shown differently via kind="external")
+	var extPkgs []string
+	for p := range extPkgSeen {
+		extPkgs = append(extPkgs, p)
+	}
+	sort.Strings(extPkgs)
+	for _, p := range extPkgs {
+		nodes = append(nodes, GraphNode{
+			ID:    p,
+			Label: p,
+			Kind:  "external",
+		})
+	}
+
+	// ── Create edges ─────────────────────────────────────────────────────
+	var edges []GraphEdge
+	for key, weight := range edgeWeights {
+		ps := strings.SplitN(key, "->", 2)
+		if len(ps) == 2 {
+			edges = append(edges, GraphEdge{
+				Source: ps[0],
+				Target: ps[1],
+				Type:   "IMPORTS",
+				Weight: weight,
+			})
+		}
+	}
+	sort.Slice(edges, func(i, j int) bool {
+		return edges[i].Source < edges[j].Source
+	})
+
+	return &GraphResponse{Nodes: nodes, Edges: edges}, nil
+}
 
 
 func GenerateSystemDocs(irPath string) (*DocsResponse, error) {
