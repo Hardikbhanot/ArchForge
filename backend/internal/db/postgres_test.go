@@ -74,7 +74,7 @@ func TestDatabaseIntegration(t *testing.T) {
 	}
 
 	// Verify project status update
-	err = projStore.UpdateStatus(testProj.ID, project.StatusParsed, "newhash", "")
+	err = projStore.UpdateStatus(testProj.ID, project.StatusParsed, "/tmp/pg_updated", "newhash", "")
 	if err != nil {
 		t.Fatalf("failed to update status: %v", err)
 	}

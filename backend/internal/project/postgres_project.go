@@ -65,13 +65,13 @@ func (s *PostgresProjectStore) ListByOwner(ownerID string) ([]*Project, error) {
 	return list, nil
 }
 
-func (s *PostgresProjectStore) UpdateStatus(id string, status ProjectStatus, commitHash string, errStr string) error {
+func (s *PostgresProjectStore) UpdateStatus(id string, status ProjectStatus, localPath string, commitHash string, errStr string) error {
 	query := `
 	UPDATE projects
-	SET status = $1, commit_hash = $2, error = $3
-	WHERE id = $4;`
+	SET status = $1, local_path = $2, commit_hash = $3, error = $4
+	WHERE id = $5;`
 
-	res, err := s.db.Exec(query, status, commitHash, errStr, id)
+	res, err := s.db.Exec(query, status, localPath, commitHash, errStr, id)
 	if err != nil {
 		return err
 	}

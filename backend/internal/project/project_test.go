@@ -46,7 +46,7 @@ func TestProjectStore(t *testing.T) {
 		t.Errorf("expected list length 1, got %d", len(list))
 	}
 
-	err = store.UpdateStatus("p-1", StatusCompleted, "commit-hash-abc", "")
+	err = store.UpdateStatus("p-1", StatusCompleted, "/tmp/p-1", "commit-hash-abc", "")
 	if err != nil {
 		t.Fatalf("failed to update status: %v", err)
 	}

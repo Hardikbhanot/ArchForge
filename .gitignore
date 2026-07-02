@@ -2,6 +2,7 @@
 backend/bin/
 backend/.env
 backend/data
+backend/internal/db/data
 
 # Node / Angular
 frontend/node_modules/
