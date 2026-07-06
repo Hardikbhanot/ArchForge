@@ -10,6 +10,7 @@ import (
 
 	"github.com/hardikbhanot/archforge/backend/internal/auth"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type errorResponse struct {
@@ -115,7 +116,8 @@ func (h *ParserHandler) GetIR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
 	irFile, err := os.Open(irPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -163,7 +165,8 @@ func (h *ParserHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
 
 	// Optional: drill into a specific package's files via ?pkg=<name>
 	pkg := r.URL.Query().Get("pkg")
@@ -218,7 +221,8 @@ func (h *ParserHandler) GetDocs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
 	docs, err := GenerateSystemDocs(irPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)

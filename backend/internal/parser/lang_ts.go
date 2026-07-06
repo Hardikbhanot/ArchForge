@@ -11,13 +11,20 @@ import (
 	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/smacker/go-tree-sitter/typescript/tsx"
 	"github.com/smacker/go-tree-sitter/typescript/typescript"
 )
 
-type TSAdapter struct{}
+type TSAdapter struct {
+	isTSX bool
+}
 
 func NewTSAdapter() *TSAdapter {
-	return &TSAdapter{}
+	return &TSAdapter{isTSX: false}
+}
+
+func NewTSXAdapter() *TSAdapter {
+	return &TSAdapter{isTSX: true}
 }
 
 func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Relationship, error) {
@@ -45,7 +52,11 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 	}
 
 	parser := sitter.NewParser()
-	parser.SetLanguage(typescript.GetLanguage())
+	if a.isTSX {
+		parser.SetLanguage(tsx.GetLanguage())
+	} else {
+		parser.SetLanguage(typescript.GetLanguage())
+	}
 
 	tree, err := parser.ParseCtx(context.Background(), nil, content)
 	if err != nil {
@@ -54,6 +65,9 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 			Checksum: checksum,
 			Language: "TypeScript",
 			Size:     stat.Size(),
+		}
+		if a.isTSX {
+			fileIR.Language = "TSX"
 		}
 		return fileIR, nil, nil, nil
 	}
@@ -105,6 +119,35 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					Documentation: "",
 					Metadata:      map[string]interface{}{},
 				})
+			}
+		} else if node.Type() == "lexical_declaration" || node.Type() == "variable_declaration" {
+			// Handle React arrow function components: const MyComp = () => {}
+			for i := 0; i < int(node.ChildCount()); i++ {
+				decl := node.Child(i)
+				if decl.Type() == "variable_declarator" {
+					var nameNode, valueNode *sitter.Node
+					for j := 0; j < int(decl.ChildCount()); j++ {
+						child := decl.Child(j)
+						if child.Type() == "identifier" {
+							nameNode = child
+						} else if child.Type() == "arrow_function" {
+							valueNode = child
+						}
+					}
+					
+					if nameNode != nil && valueNode != nil {
+						name := nameNode.Content(content)
+						id := fmt.Sprintf("ts://%s/%s", pkgName, name)
+						symbols = append(symbols, Symbol{
+							ID:            id,
+							Name:          name,
+							Kind:          "Function", // Arrow functions are treated as Functions/Components
+							Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
+							Documentation: "",
+							Metadata:      map[string]interface{}{},
+						})
+					}
+				}
 			}
 		}
 

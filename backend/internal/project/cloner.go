@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type Cloner struct {
@@ -33,12 +35,20 @@ func (c *Cloner) StartClone(p *Project) {
 	}
 
 	go func() {
-		localPath := filepath.Join(c.DataDir, p.ID)
+		repoHash := utils.GenerateRepoHash(p.GitURL, p.Branch)
+		localPath := filepath.Join(c.DataDir, repoHash)
 		p.LocalPath = localPath
 
 		// Ensure parent directory exists
 		if err := os.MkdirAll(c.DataDir, 0755); err != nil {
 			_ = c.Store.UpdateStatus(p.ID, StatusFailed, "", "", fmt.Sprintf("failed to create data dir: %v", err))
+			return
+		}
+
+		// Check if it's already cloned
+		if stat, err := os.Stat(localPath); err == nil && stat.IsDir() {
+			log.Printf("Cloner: repository already exists at %s, skipping clone for project %s", localPath, p.ID)
+			_ = c.Store.UpdateStatus(p.ID, StatusCompleted, localPath, p.Branch, "")
 			return
 		}
 

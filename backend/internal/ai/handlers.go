@@ -8,17 +8,21 @@ import (
 	"strings"
 
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
+	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type AIHandler struct {
-	Service *AIService
-	IrDir   string
+	Service   *AIService
+	IrDir     string
+	ProjStore project.ProjectStore
 }
 
-func NewAIHandler(service *AIService, irDir string) *AIHandler {
+func NewAIHandler(service *AIService, irDir string, projStore project.ProjectStore) *AIHandler {
 	return &AIHandler{
-		Service: service,
-		IrDir:   irDir,
+		Service:   service,
+		IrDir:     irDir,
+		ProjStore: projStore,
 	}
 }
 
@@ -47,14 +51,21 @@ func (h *AIHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+
 	var req ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Load the IR JSON for this project
-	irPath := filepath.Join(h.IrDir, projectID+".json")
+	// 1. Load the IR JSON for this project using hash
+	irPath := filepath.Join(h.IrDir, repoHash+".json")
 	irData, err := os.ReadFile(irPath)
 	if err != nil {
 		json.NewEncoder(w).Encode(ChatResponse{Error: "Project IR not found. Ensure the project is fully parsed."})
@@ -68,14 +79,14 @@ func (h *AIHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Load or generate embeddings for the symbols
-	embeddings, err := h.Service.GetOrGenerateEmbeddings(r.Context(), projectID, projectIR.Symbols)
+	store, err := h.Service.GetOrGenerateEmbeddings(r.Context(), repoHash, projectIR.Symbols)
 	if err != nil {
 		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to load embeddings: " + err.Error()})
 		return
 	}
 
 	// 3. Search for the top 15 most relevant symbols
-	topSymbols, err := h.Service.SearchSymbols(r.Context(), req.Message, embeddings, projectIR.Symbols, 15)
+	topSymbols, err := h.Service.SearchSymbols(r.Context(), store.Provider, req.Message, store.Embeddings, projectIR.Symbols, 15)
 	if err != nil {
 		json.NewEncoder(w).Encode(ChatResponse{Error: "Semantic search failed: " + err.Error()})
 		return

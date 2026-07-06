@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type ParserService struct {
@@ -37,6 +38,15 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 
 	go func() {
 		log.Printf("ParserService: starting parse task on directory: %s", proj.LocalPath)
+
+		repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+		irFilename := filepath.Join(s.OutputDir, fmt.Sprintf("%s.json", repoHash))
+
+		if _, err := os.Stat(irFilename); err == nil {
+			log.Printf("ParserService: IR for repo hash %s already exists, skipping parse", repoHash)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusCompleted, proj.LocalPath, "", "")
+			return
+		}
 
 		var files []FileIR
 		var symbols []Symbol
@@ -160,7 +170,6 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 			return
 		}
 
-		irFilename := filepath.Join(s.OutputDir, fmt.Sprintf("%s.json", proj.ID))
 		irFile, err := os.Create(irFilename)
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to write IR json metadata file: %v", err)

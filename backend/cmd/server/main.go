@@ -53,6 +53,7 @@ func newMux(database *sql.DB) http.Handler {
 	parserManager := parser.NewParserManager()
 	parserManager.RegisterAdapter(".go", parser.NewGoAdapter())
 	parserManager.RegisterAdapter(".ts", parser.NewTSAdapter())
+	parserManager.RegisterAdapter(".tsx", parser.NewTSXAdapter())
 	parserManager.RegisterAdapter(".py", parser.NewPythonAdapter())
 	parserManager.RegisterAdapter(".java", parser.NewJavaAdapter())
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
@@ -60,13 +61,16 @@ func newMux(database *sql.DB) http.Handler {
 
 	// Initialize AI Service
 	apiKey := os.Getenv("GEMINI_API_KEY")
+	hfAPIKey := os.Getenv("HUGGINGFACE_API_KEY")
+	voyageAPIKey := os.Getenv("VOYAGE_API_KEY")
+	
 	var aiHandler *ai.AIHandler
 	if apiKey != "" {
-		aiService, err := ai.NewAIService(apiKey, "./data/embeddings")
+		aiService, err := ai.NewAIService(apiKey, hfAPIKey, voyageAPIKey, "./data/embeddings")
 		if err != nil {
 			log.Printf("Failed to initialize AI Service: %v", err)
 		} else {
-			aiHandler = ai.NewAIHandler(aiService, "./data/ir")
+			aiHandler = ai.NewAIHandler(aiService, "./data/ir", projectStore)
 		}
 	} else {
 		log.Println("GEMINI_API_KEY not set. AI Chat feature will be disabled.")
