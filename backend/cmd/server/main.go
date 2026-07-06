@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/hardikbhanot/archforge/backend/internal/ai"
 	"github.com/hardikbhanot/archforge/backend/internal/auth"
 	"github.com/hardikbhanot/archforge/backend/internal/db"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
@@ -56,6 +58,20 @@ func newMux(database *sql.DB) http.Handler {
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
 	parserHandler := parser.NewParserHandler(projectStore, parserService)
 
+	// Initialize AI Service
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	var aiHandler *ai.AIHandler
+	if apiKey != "" {
+		aiService, err := ai.NewAIService(apiKey, "./data/embeddings")
+		if err != nil {
+			log.Printf("Failed to initialize AI Service: %v", err)
+		} else {
+			aiHandler = ai.NewAIHandler(aiService, "./data/ir")
+		}
+	} else {
+		log.Println("GEMINI_API_KEY not set. AI Chat feature will be disabled.")
+	}
+
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -90,6 +106,11 @@ func newMux(database *sql.DB) http.Handler {
 	mux.Handle("GET /api/v1/projects", auth.AuthMiddleware(http.HandlerFunc(projectHandler.List)))
 	mux.Handle("GET /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Get)))
 	mux.Handle("DELETE /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Delete)))
+
+	// AI Endpoints
+	if aiHandler != nil {
+		mux.Handle("POST /api/v1/projects/{id}/chat", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleChat)))
+	}
 
 	// Parser Endpoints
 	mux.Handle("POST /api/v1/projects/{id}/parse", auth.AuthMiddleware(http.HandlerFunc(parserHandler.Parse)))

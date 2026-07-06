@@ -5,6 +5,7 @@ import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angu
 import { AuthService } from '../../core/services/auth.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription, interval, startWith, switchMap } from 'rxjs';
+import { AiChatComponent } from './ai-chat/ai-chat.component';
 
 export interface Project {
   id: string;
@@ -39,7 +40,7 @@ export interface GithubRepo {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, DecimalPipe],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, DecimalPipe, AiChatComponent],
   template: `
     <div class="dashboard-container">
       <div class="glow-mesh-1"></div>
@@ -560,6 +561,7 @@ export interface GithubRepo {
             </div>
           </div>
         }
+        <app-ai-chat [projectId]="selectedProjectId() || null"></app-ai-chat>
       </main>
     </div>
   `,
