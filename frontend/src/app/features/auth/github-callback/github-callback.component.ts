@@ -189,7 +189,7 @@ export class GithubCallbackComponent implements OnInit {
     this.http.get<AuthResponse>(`http://localhost:8080/api/v1/auth/github/callback?code=${code}`).subscribe({
       next: (res) => {
         this.authService.handleAuthentication(res.token, res.user);
-        this.router.navigate(['/']);
+        this.router.navigate(['/dashboard']);
       },
       error: (err) => {
         this.error.set(err.error?.error || 'Failed to authenticate with GitHub.');

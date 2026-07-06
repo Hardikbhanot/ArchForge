@@ -425,7 +425,7 @@ export class RegisterComponent {
     this.authService.register(username!, email!, password!).subscribe({
       next: () => {
         this.isLoading.set(false);
-        this.router.navigate(['/']);
+        this.router.navigate(['/dashboard']);
       },
       error: (err) => {
         this.isLoading.set(false);
