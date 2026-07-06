@@ -115,12 +115,29 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 			modules = append(modules, mod)
 		}
 
+		// Detect primary language
+		langCounts := make(map[string]int)
+		for _, f := range files {
+			langCounts[f.Language]++
+		}
+		primaryLang := "Unknown"
+		maxCount := 0
+		for lang, count := range langCounts {
+			if count > maxCount {
+				maxCount = count
+				primaryLang = lang
+			}
+		}
+		if primaryLang == "Unknown" && len(files) > 0 {
+			primaryLang = files[0].Language
+		}
+
 		// Compile Project IR schema
 		projectIR := ProjectIR{
 			SchemaVersion: "1.0.0",
 			Name:          proj.Name,
 			Version:       "1.0.0",
-			Language:      "Go", // Currently supported default
+			Language:      primaryLang,
 			Repository:    proj.GitURL,
 			Modules:       modules,
 			Files:         files,
@@ -129,7 +146,7 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 			Metadata: Metadata{
 				CreatedBy:   "ArchForge ParserService 1.0",
 				Version:     1,
-				Language:    "Go",
+				Language:    primaryLang,
 				Confidence:  1.0,
 				GeneratedAt: time.Now(),
 			},

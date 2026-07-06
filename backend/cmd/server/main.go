@@ -50,6 +50,9 @@ func newMux(database *sql.DB) http.Handler {
 	// Initialize Parser structures
 	parserManager := parser.NewParserManager()
 	parserManager.RegisterAdapter(".go", parser.NewGoAdapter())
+	parserManager.RegisterAdapter(".ts", parser.NewTSAdapter())
+	parserManager.RegisterAdapter(".py", parser.NewPythonAdapter())
+	parserManager.RegisterAdapter(".java", parser.NewJavaAdapter())
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
 	parserHandler := parser.NewParserHandler(projectStore, parserService)
 
