@@ -17,7 +17,6 @@ Whether you're onboarding new engineers, reviewing massive PRs, or migrating leg
 - 🎨 **Premium HLD Generation**: Instantly generate beautifully styled, Mermaid.js-powered High-Level Design (HLD) documents in your browser.
 - 🤖 **Autonomous GitHub PR Agent**: ArchForge automatically intercepts GitHub Webhooks on Pull Requests, analyzes the architectural impact of the diff, and posts an AI review directly to your PR.
 - 🔌 **VS Code Extension**: Highlight code directly in your IDE and ask ArchForge about its architectural implications via the built-in sidebar chat.
-- ☁️ **Oracle Cloud CI/CD**: A fully configured GitHub Actions workflow (`deploy.yml`) allows for zero-downtime, continuous deployment to Oracle Cloud VMs via Docker Compose.
 
 ---
 
@@ -26,7 +25,7 @@ Whether you're onboarding new engineers, reviewing massive PRs, or migrating leg
 - **Backend**: Go (Tree-sitter for parsing ASTs, SQLite/PostgreSQL for storage)
 - **Frontend**: Angular 17+ (Modern, dark-aurora themed UI)
 - **AI Engine**: Google Gemini 3.6 Flash
-- **Deployment**: Docker, Docker Compose, GitHub Actions (CI/CD)
+- **Orchestration**: Docker, Docker Compose
 
 ---
 
@@ -63,20 +62,14 @@ npm run compile
 
 ---
 
-## ☁️ CI/CD & Deployment
+## 🐳 Run via Docker
 
-ArchForge is fully containerized and configured for automated deployments to Oracle Cloud VMs (or any server) using **GitHub Actions**.
+ArchForge is fully containerized. You can spin up the entire stack (Database, Backend, Frontend) with a single command:
 
-### How it works
-1. **Push to `main`**: Any code pushed to the `main` branch triggers the `.github/workflows/deploy.yml` pipeline.
-2. **Automated SSH**: GitHub Actions securely SSHs into your remote VM.
-3. **Docker Compose**: The runner automatically pulls the latest code, rebuilds the `backend` and `frontend` Docker images, and restarts the services with zero downtime.
-
-### Setup Instructions
-To enable the deployment, add the following Repository Secrets to GitHub (`Settings > Secrets and variables > Actions`):
-- `SSH_HOST`: Your VM's public IP address.
-- `SSH_USERNAME`: Your VM username (e.g., `ubuntu` or `opc`).
-- `SSH_PRIVATE_KEY`: Your private SSH key.
+```bash
+docker-compose up -d --build
+```
+*The frontend will be available on port `80` and the backend on `8080`.*
 
 ---
 
@@ -88,6 +81,5 @@ To enable the deployment, add the following Repository Secrets to GitHub (`Setti
 - [x] Premium HLD rendering (Mermaid.js in browser)
 - [x] GitHub PR Agent Webhook integration
 - [x] VS Code Sidebar Extension
-- [x] CI/CD Oracle Cloud Deployment
 
 <p align="center"><i>Built with passion out of the box.</i></p>
