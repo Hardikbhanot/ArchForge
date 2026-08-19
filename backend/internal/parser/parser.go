@@ -35,7 +35,15 @@ func (m *ParserManager) GetAdapter(ext string) (LanguageAdapter, bool) {
 
 func (m *ParserManager) DetectAndParse(rootPath, relPath string) (*FileIR, []Symbol, []Relationship, error) {
 	ext := filepath.Ext(relPath)
-	adapter, exists := m.GetAdapter(ext)
+	base := filepath.Base(relPath)
+
+	// Try checking the full base name first (e.g., "Dockerfile")
+	adapter, exists := m.GetAdapter(base)
+	if !exists {
+		// Fallback to extension (e.g., ".go", ".ts")
+		adapter, exists = m.GetAdapter(ext)
+	}
+
 	if !exists {
 		return nil, nil, nil, nil // Skip file parsing if no registered adapter
 	}

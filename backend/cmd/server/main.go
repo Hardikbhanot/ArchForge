@@ -64,6 +64,10 @@ func newMux(database *sql.DB) http.Handler {
 	parserManager.RegisterAdapter(".cc", parser.NewCppAdapter())
 	parserManager.RegisterAdapter(".rs", parser.NewRustAdapter())
 	parserManager.RegisterAdapter(".cs", parser.NewCSharpAdapter())
+	parserManager.RegisterAdapter("Dockerfile", parser.NewDockerAdapter())
+	parserManager.RegisterAdapter(".yaml", parser.NewYAMLAdapter())
+	parserManager.RegisterAdapter(".yml", parser.NewYAMLAdapter())
+	parserManager.RegisterAdapter(".tf", parser.NewHCLAdapter())
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
 	parserHandler := parser.NewParserHandler(projectStore, parserService)
 
