@@ -219,8 +219,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 function appendMessage(sender, text, className) {
                     const div = document.createElement('div');
                     div.className = 'message ' + className;
-                    // Simple formatting for markdown-ish responses
-                    let formatted = text.replace(/\\n/g, '<br>');
+                    
+                    // Basic Markdown rendering
+                    let formatted = text
+                        .replace(/</g, '&lt;').replace(/>/g, '&gt;') // sanitize html tags first
+                        .replace(/\\n/g, '<br>')
+                        .replace(/\n/g, '<br>')
+                        .replace(/### (.*?)(<br>|$)/g, '<h3>$1</h3>')
+                        .replace(/## (.*?)(<br>|$)/g, '<h2>$1</h2>')
+                        .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/```[a-z]*<br>([\s\S]*?)<br>```/g, '<pre><code>$1</code></pre>')
+                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                        .replace(/`([^`]+)`/g, '<code style="background: rgba(128,128,128,0.2); padding: 2px 4px; border-radius: 3px;">$1</code>');
+
                     div.innerHTML = '<b>' + sender + '</b><br><br>' + formatted;
                     history.appendChild(div);
                     history.scrollTop = history.scrollHeight;

@@ -225,7 +225,7 @@ func (h *AIHandler) HandleExtensionChat(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	prompt := fmt.Sprintf(`You are ArchForge, an AI Software Architecture Assistant operating inside the user's IDE.
+	prompt := fmt.Sprintf(`You are ArchForge AI, an expert software architecture assistant operating inside the user's IDE.
 The user has highlighted the following code and asked a question.
 
 Highlighted Code:
@@ -234,7 +234,10 @@ Highlighted Code:
 Question:
 %s
 
-Answer the question professionally, focusing on architectural implications, code structure, and best practices. Format your answer in Markdown.`, req.Code, req.Question)
+Provide a concise, direct, and highly focused answer. 
+- Do NOT generate a massive, overly-verbose report for simple questions or small snippets.
+- Use simple, easy-to-read formatting.
+- Focus strictly on answering the specific question asked, pointing out architectural impacts or best practices only if highly relevant.`, req.Code, req.Question)
 
 	var temp float32 = 0.2
 	resp, err := h.Service.client.Models.GenerateContent(r.Context(), "gemini-3.6-flash", genai.Text(prompt), &genai.GenerateContentConfig{
