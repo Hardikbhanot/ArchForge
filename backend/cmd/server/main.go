@@ -12,6 +12,7 @@ import (
 	"github.com/hardikbhanot/archforge/backend/internal/db"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/webhook"
 	"github.com/joho/godotenv"
 )
 
@@ -54,8 +55,15 @@ func newMux(database *sql.DB) http.Handler {
 	parserManager.RegisterAdapter(".go", parser.NewGoAdapter())
 	parserManager.RegisterAdapter(".ts", parser.NewTSAdapter())
 	parserManager.RegisterAdapter(".tsx", parser.NewTSXAdapter())
+	parserManager.RegisterAdapter(".js", parser.NewJSAdapter())
+	parserManager.RegisterAdapter(".jsx", parser.NewJSAdapter())
 	parserManager.RegisterAdapter(".py", parser.NewPythonAdapter())
 	parserManager.RegisterAdapter(".java", parser.NewJavaAdapter())
+	parserManager.RegisterAdapter(".cpp", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".hpp", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".cc", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".rs", parser.NewRustAdapter())
+	parserManager.RegisterAdapter(".cs", parser.NewCSharpAdapter())
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
 	parserHandler := parser.NewParserHandler(projectStore, parserService)
 
@@ -114,6 +122,13 @@ func newMux(database *sql.DB) http.Handler {
 	// AI Endpoints
 	if aiHandler != nil {
 		mux.Handle("POST /api/v1/projects/{id}/chat", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleChat)))
+		mux.Handle("GET /api/v1/projects/{id}/hld", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleGenerateHLD)))
+	}
+
+	// Initialize Webhook Handler
+	whHandler, err := webhook.NewWebhookHandler()
+	if err != nil {
+		log.Printf("Failed to initialize Webhook Handler: %v", err)
 	}
 
 	// Parser Endpoints
@@ -121,6 +136,11 @@ func newMux(database *sql.DB) http.Handler {
 	mux.Handle("GET /api/v1/projects/{id}/ir", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetIR)))
 	mux.Handle("GET /api/v1/projects/{id}/graph", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetGraph)))
 	mux.Handle("GET /api/v1/projects/{id}/docs", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetDocs)))
+
+	// Webhook Endpoints
+	if whHandler != nil {
+		mux.HandleFunc("POST /api/v1/webhooks/github", whHandler.HandleGitHubEvent)
+	}
 
 	return corsMiddleware(mux)
 }

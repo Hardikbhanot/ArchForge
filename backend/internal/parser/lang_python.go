@@ -92,13 +92,14 @@ func (a *PythonAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, 
 					kind = "Function"
 				}
 
-				id := fmt.Sprintf("python://%s/%s", pkgName, name)
+				id := fmt.Sprintf("py://%s/%s", pkgName, name)
 				symbols = append(symbols, Symbol{
 					ID:            id,
 					Name:          name,
 					Kind:          kind,
 					Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
-					Documentation: "",
+					Documentation: "", // TODO: extract docstrings
+					CodeSnippet:   node.Content(content),
 					Metadata:      map[string]interface{}{},
 				})
 			}

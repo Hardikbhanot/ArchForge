@@ -10,9 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/genai"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
-	"google.golang.org/api/option"
 )
 
 type AIService struct {
@@ -24,7 +23,7 @@ type AIService struct {
 
 func NewAIService(geminiAPIKey, hfAPIKey, voyageAPIKey, embeddingsDir string) (*AIService, error) {
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, option.WithAPIKey(geminiAPIKey))
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: geminiAPIKey})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gemini client: %w", err)
 	}
@@ -42,9 +41,7 @@ func NewAIService(geminiAPIKey, hfAPIKey, voyageAPIKey, embeddingsDir string) (*
 }
 
 func (s *AIService) Close() {
-	if s.client != nil {
-		s.client.Close()
-	}
+	// The new genai.Client does not require Close()
 }
 
 // GetOrGenerateEmbeddings returns the embeddings for a project's symbols, loading from cache if available.
@@ -176,14 +173,14 @@ func (s *AIService) SearchSymbols(ctx context.Context, provider string, query st
 }
 
 func (s *AIService) AnswerQuery(ctx context.Context, query string, contextSymbols []parser.Symbol) (string, error) {
-	model := s.client.GenerativeModel("gemini-1.5-flash")
-	model.SetTemperature(0.2) // Low temperature for factual RAG responses
-
 	var contextBuilder string
 	for _, sym := range contextSymbols {
 		contextBuilder += fmt.Sprintf("Symbol: %s (Kind: %s, File: %s)\n", sym.Name, sym.Kind, sym.Location.File)
 		if sym.Documentation != "" {
 			contextBuilder += fmt.Sprintf("Documentation: %s\n", sym.Documentation)
+		}
+		if sym.CodeSnippet != "" {
+			contextBuilder += fmt.Sprintf("Source Code:\n```\n%s\n```\n", sym.CodeSnippet)
 		}
 		contextBuilder += "---\n"
 	}
@@ -192,22 +189,24 @@ func (s *AIService) AnswerQuery(ctx context.Context, query string, contextSymbol
 The user is asking a question about their codebase. Below is a list of relevant architectural symbols (classes, functions, etc.) retrieved from the codebase based on their semantic similarity to the query.
 
 Use ONLY the provided context to answer the question. If the answer cannot be determined from the context, say "I don't have enough context to answer that accurately."
-Always cite the File path when referring to a symbol. Keep your answer concise, technical, and helpful.
+Always cite the File path when referring to a symbol. Keep your answer concise, but explain the concepts clearly so that even a beginner or layman can easily understand the logic. Use simple analogies if it helps explain complex flows.
 
 RELEVANT CONTEXT:
 %s
 
 USER QUESTION: %s`, contextBuilder, query)
 
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	var temp float32 = 0.2
+	resp, err := s.client.Models.GenerateContent(ctx, "gemini-3.6-flash", genai.Text(prompt), &genai.GenerateContentConfig{
+		Temperature: &temp,
+	})
+	
 	if err != nil {
 		return "", fmt.Errorf("failed to generate answer: %w", err)
 	}
 
 	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
-		if textPart, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-			return string(textPart), nil
-		}
+		return resp.Candidates[0].Content.Parts[0].Text, nil
 	}
 
 	return "No answer generated.", nil

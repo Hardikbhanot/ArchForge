@@ -2,11 +2,13 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"google.golang.org/genai"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
 	"github.com/hardikbhanot/archforge/backend/internal/utils"
@@ -101,4 +103,109 @@ func (h *AIHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
+}
+
+func (h *AIHandler) HandleGenerateHLD(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	var projectID string
+	for i, part := range parts {
+		if part == "projects" && i+1 < len(parts) {
+			projectID = parts[i+1]
+			break
+		}
+	}
+
+	if projectID == "" {
+		http.Error(w, "project ID required", http.StatusBadRequest)
+		return
+	}
+
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+
+	irPath := filepath.Join(h.IrDir, repoHash+".json")
+	irData, err := os.ReadFile(irPath)
+	if err != nil {
+		http.Error(w, "Project IR not found. Please analyze codebase first.", http.StatusNotFound)
+		return
+	}
+
+	var projectIR parser.ProjectIR
+	if err := json.Unmarshal(irData, &projectIR); err != nil {
+		http.Error(w, "Failed to parse project IR", http.StatusInternalServerError)
+		return
+	}
+
+	// For HLD, we want to give the AI an overview of the architecture without blowing up the context window.
+	// We'll strip the massive code snippets and only pass the structural declarations.
+	var architectureContext string
+	for _, sym := range projectIR.Symbols {
+		// Only include structural components, not every single function if the project is huge, or just include names
+		if sym.Kind == "Class" || sym.Kind == "Interface" || sym.Kind == "Struct" || sym.Kind == "Module" {
+			architectureContext += fmt.Sprintf("- %s (%s) in %s\n", sym.Name, sym.Kind, sym.Location.File)
+		}
+	}
+	
+	// If it's a small project, just pass everything. But for safety, keep it structural.
+	if architectureContext == "" {
+		for i, sym := range projectIR.Symbols {
+			if i > 100 { break } // cap at 100
+			architectureContext += fmt.Sprintf("- %s (%s) in %s\n", sym.Name, sym.Kind, sym.Location.File)
+		}
+	}
+
+	prompt := fmt.Sprintf(`You are an expert Software Architect.
+Based on the following architectural components of the codebase, generate a highly polished, premium High-Level Design (HLD) document in Markdown.
+
+You MUST strictly follow this exact structure and formatting:
+
+# High-Level Design (HLD): [Project Name]
+
+## 1. Introduction
+Write a brief, high-level summary of what this project does and its core purpose.
+
+---
+
+## 2. Architecture Overview
+Provide a short overview of the architectural pattern.
+
+### 2.1 Core Mermaid.js Diagram
+Generate a beautifully styled Mermaid.js graph. You MUST use 'classDef' to style the nodes with modern, dark-theme friendly colors (e.g., classDef default fill:#1e1e2f,stroke:#8b5cf6,stroke-width:2px,color:#fff). Use subgraphs to group related services or layers.
+
+---
+
+## 3. Top-Level Basic Services & Roles
+Break down the top 3 to 5 most important services, components, or folders found in the components list. For each, use this format:
+
+### 3.X [Component Name]
+- **Role**: [Brief description of what it does]
+- **Interactions**: [What other components does it talk to and how?]
+
+Codebase Components:
+%s
+`, architectureContext)
+
+	// We use the existing AI service to call Gemini
+	var temp float32 = 0.2
+	resp, err := h.Service.client.Models.GenerateContent(r.Context(), "gemini-3.6-flash", genai.Text(prompt), &genai.GenerateContentConfig{
+		Temperature: &temp,
+	})
+	
+	if err != nil || len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		http.Error(w, "Failed to generate HLD via AI", http.StatusInternalServerError)
+		return
+	}
+
+	hldMarkdown := resp.Candidates[0].Content.Parts[0].Text
+
+	filename := fmt.Sprintf("%s-hld.md", proj.Name)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	w.Header().Set("Content-Type", "text/markdown")
+	
+	// Important: Send the markdown as the response body
+	w.Write([]byte(hldMarkdown))
 }

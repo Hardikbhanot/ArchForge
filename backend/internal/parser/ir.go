@@ -33,13 +33,14 @@ type Location struct {
 }
 
 type Symbol struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Kind          string   `json:"kind"` // e.g. Class, Struct, Interface, Method, Function, Package
-	QualifiedName string   `json:"qualifiedName"`
-	Visibility    string   `json:"visibility"`
-	Location      Location `json:"location"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Kind          string                 `json:"kind"` // e.g. Class, Struct, Interface, Method, Function, Package
+	QualifiedName string                 `json:"qualifiedName"`
+	Visibility    string                 `json:"visibility"`
+	Location      Location               `json:"location"`
 	Documentation string                 `json:"documentation"`
+	CodeSnippet   string                 `json:"codeSnippet"`
 	Signature     string                 `json:"signature"`
 	Children      []string               `json:"children,omitempty"` // IDs of nested child symbols
 	Metadata      map[string]interface{} `json:"metadata,omitempty"`

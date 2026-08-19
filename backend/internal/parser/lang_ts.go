@@ -92,10 +92,10 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					imports = append(imports, importPath)
 				}
 			}
-		} else if node.Type() == "class_declaration" || node.Type() == "interface_declaration" || node.Type() == "function_declaration" {
+		} else if node.Type() == "class_declaration" || node.Type() == "interface_declaration" || node.Type() == "function_declaration" || node.Type() == "method_definition" {
 			var nameNode *sitter.Node
 			for i := 0; i < int(node.ChildCount()); i++ {
-				if node.Child(i).Type() == "identifier" || node.Child(i).Type() == "type_identifier" {
+				if node.Child(i).Type() == "identifier" || node.Child(i).Type() == "type_identifier" || node.Child(i).Type() == "property_identifier" {
 					nameNode = node.Child(i)
 					break
 				}
@@ -108,6 +108,8 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					kind = "Interface"
 				} else if node.Type() == "function_declaration" {
 					kind = "Function"
+				} else if node.Type() == "method_definition" {
+					kind = "Method"
 				}
 
 				id := fmt.Sprintf("ts://%s/%s", pkgName, name)
@@ -117,6 +119,7 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					Kind:          kind,
 					Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
 					Documentation: "",
+					CodeSnippet:   node.Content(content),
 					Metadata:      map[string]interface{}{},
 				})
 			}
@@ -144,6 +147,7 @@ func (a *TSAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 							Kind:          "Function", // Arrow functions are treated as Functions/Components
 							Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
 							Documentation: "",
+							CodeSnippet:   node.Content(content),
 							Metadata:      map[string]interface{}{},
 						})
 					}

@@ -44,7 +44,7 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 
 		if _, err := os.Stat(irFilename); err == nil {
 			log.Printf("ParserService: IR for repo hash %s already exists, skipping parse", repoHash)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusCompleted, proj.LocalPath, "", "")
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusParsed, proj.LocalPath, proj.CommitHash, "")
 			return
 		}
 

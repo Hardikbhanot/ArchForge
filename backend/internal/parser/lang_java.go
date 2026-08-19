@@ -80,8 +80,6 @@ func (a *JavaAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []
 			var nameNode *sitter.Node
 			var annotations []string
 
-			// Check siblings backwards for modifiers/annotations (simplistic approach)
-			// Tree-sitter Java puts annotations in the modifiers node.
 			for i := 0; i < int(node.ChildCount()); i++ {
 				child := node.Child(i)
 				if child.Type() == "identifier" {
@@ -115,7 +113,35 @@ func (a *JavaAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []
 					Kind:          kind,
 					Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
 					Documentation: "",
+					CodeSnippet:   node.Content(content),
 					Metadata:      meta,
+				})
+			}
+		} else if node.Type() == "method_declaration" || node.Type() == "constructor_declaration" {
+			var nameNode *sitter.Node
+			for i := 0; i < int(node.ChildCount()); i++ {
+				if node.Child(i).Type() == "identifier" {
+					nameNode = node.Child(i)
+					break
+				}
+			}
+
+			if nameNode != nil {
+				name := nameNode.Content(content)
+				kind := "Method"
+				if node.Type() == "constructor_declaration" {
+					kind = "Constructor"
+				}
+
+				id := fmt.Sprintf("java://%s/%s", pkgName, name)
+				symbols = append(symbols, Symbol{
+					ID:            id,
+					Name:          name,
+					Kind:          kind,
+					Location:      Location{File: relPath, LineStart: int(node.StartPoint().Row + 1), LineEnd: int(node.EndPoint().Row + 1)},
+					Documentation: "",
+					CodeSnippet:   node.Content(content),
+					Metadata:      map[string]interface{}{},
 				})
 			}
 		}
