@@ -209,3 +209,42 @@ Codebase Components:
 	// Important: Send the markdown as the response body
 	w.Write([]byte(hldMarkdown))
 }
+
+type ExtensionChatRequest struct {
+	Code     string `json:"code"`
+	Question string `json:"question"`
+}
+
+func (h *AIHandler) HandleExtensionChat(w http.ResponseWriter, r *http.Request) {
+	var req ExtensionChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	prompt := fmt.Sprintf(`You are ArchForge, an AI Software Architecture Assistant operating inside the user's IDE.
+The user has highlighted the following code and asked a question.
+
+Highlighted Code:
+%s
+
+Question:
+%s
+
+Answer the question professionally, focusing on architectural implications, code structure, and best practices. Format your answer in Markdown.`, req.Code, req.Question)
+
+	var temp float32 = 0.2
+	resp, err := h.Service.client.Models.GenerateContent(r.Context(), "gemini-3.6-flash", genai.Text(prompt), &genai.GenerateContentConfig{
+		Temperature: &temp,
+	})
+
+	if err != nil || len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to generate AI response: " + err.Error()})
+		return
+	}
+
+	answer := string(resp.Candidates[0].Content.Parts[0].Text)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ChatResponse{Answer: answer})
+}

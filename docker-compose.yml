@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:15-alpine
@@ -11,6 +13,44 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - archforge_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: archforge_backend
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/archforge?sslmode=disable
+    volumes:
+      - archforge_data:/app/data
+    depends_on:
+      - postgres
+    networks:
+      - archforge_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: archforge_frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - archforge_net
 
 volumes:
   postgres_data:
+  archforge_data:
+
+networks:
+  archforge_net:

@@ -1,0 +1,38 @@
+name: Deploy to Oracle Cloud VM
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Create directory if it doesn't exist
+            mkdir -p ~/ArchForge
+            cd ~/ArchForge
+            
+            # If it's a git repo, pull latest. Otherwise, clone it.
+            if [ -d ".git" ]; then
+              git pull origin main
+            else
+              git clone https://github.com/${{ github.repository }}.git .
+            fi
+            
+            # Stop existing containers
+            docker-compose down || true
+            
+            # Build and start new containers in detached mode
+            docker-compose up -d --build

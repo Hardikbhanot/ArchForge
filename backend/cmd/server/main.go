@@ -123,6 +123,7 @@ func newMux(database *sql.DB) http.Handler {
 	if aiHandler != nil {
 		mux.Handle("POST /api/v1/projects/{id}/chat", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleChat)))
 		mux.Handle("GET /api/v1/projects/{id}/hld", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleGenerateHLD)))
+		mux.HandleFunc("POST /api/v1/extension/chat", aiHandler.HandleExtensionChat)
 	}
 
 	// Initialize Webhook Handler
