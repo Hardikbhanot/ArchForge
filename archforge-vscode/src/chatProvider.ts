@@ -230,9 +230,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>')
                         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                         .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                        .replace(/```[a-z]*<br>([\s\S]*?)<br>```/g, '<pre><code>$1</code></pre>')
-                        .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-                        .replace(/`([^`]+)`/g, '<code style="background: rgba(128,128,128,0.2); padding: 2px 4px; border-radius: 3px;">$1</code>');
+                        .replace(/\`\`\`[a-z]*<br>([\s\S]*?)<br>\`\`\`/g, '<pre><code>$1</code></pre>')
+                        .replace(/\`\`\`([\s\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>')
+                        .replace(/\`([^\`]+)\`/g, '<code style="background: rgba(128,128,128,0.2); padding: 2px 4px; border-radius: 3px;">$1</code>');
 
                     div.innerHTML = '<b>' + sender + '</b><br><br>' + formatted;
                     history.appendChild(div);
