@@ -49,7 +49,11 @@ func (h *GithubHandler) Login(w http.ResponseWriter, r *http.Request) {
 	clientID, _, ok := h.getCredentials()
 	if !ok {
 		// Mock redirect
-		mockRedirect := "http://localhost:4200/auth/github/callback?code=mock_dev_code"
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:4200"
+		}
+		mockRedirect := frontendURL + "/auth/github/callback?code=mock_dev_code"
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"url":  mockRedirect,
 			"mode": "mock",
@@ -57,7 +61,11 @@ func (h *GithubHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	redirectURI := "http://localhost:4200/auth/github/callback"
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:4200"
+	}
+	redirectURI := frontendURL + "/auth/github/callback"
 	githubURL := fmt.Sprintf(
 		"https://github.com/login/oauth/authorize?client_id=%s&redirect_uri=%s&scope=user:email,repo",
 		url.QueryEscape(clientID),

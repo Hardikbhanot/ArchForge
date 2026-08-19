@@ -1,3 +1,5 @@
+import { environment } from "../../../../environments/environment";
+
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -186,7 +188,7 @@ export class GithubCallbackComponent implements OnInit {
   }
 
   private exchangeCode(code: string): void {
-    this.http.get<AuthResponse>(`http://localhost:8080/api/v1/auth/github/callback?code=${code}`).subscribe({
+    this.http.get<AuthResponse>(`${environment.apiUrl}/auth/github/callback?code=${code}`).subscribe({
       next: (res) => {
         this.authService.handleAuthentication(res.token, res.user);
         this.router.navigate(['/dashboard']);

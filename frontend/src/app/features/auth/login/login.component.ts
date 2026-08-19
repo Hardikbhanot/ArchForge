@@ -1,3 +1,5 @@
+import { environment } from "../../../../environments/environment";
+
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
@@ -461,7 +463,7 @@ export class LoginComponent {
   }
 
   signInWithGithub(): void {
-    this.http.get<{url: string}>('http://localhost:8080/api/v1/auth/github/login').subscribe({
+    this.http.get<{url: string}>(`${environment.apiUrl}/auth/github/login`).subscribe({
       next: (res) => {
         window.location.href = res.url;
       },
