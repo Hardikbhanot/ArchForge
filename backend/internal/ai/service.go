@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"google.golang.org/genai"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
