@@ -32,7 +32,7 @@ jobs:
             fi
             
             # Stop existing containers
-            docker-compose down || true
+            docker compose down || true
             
             # Build and start new containers in detached mode
-            docker-compose up -d --build
+            docker compose up -d --build
