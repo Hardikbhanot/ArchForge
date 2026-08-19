@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import * as http from 'http';
+import * as https from 'https';
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'archforge.chatView';
@@ -59,8 +59,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const payload = JSON.stringify({ code, question });
 
             const options = {
-                hostname: 'localhost',
-                port: 8080,
+                hostname: 'api.archforge.hbhanot.tech',
+                port: 443,
                 path: '/api/v1/extension/chat',
                 method: 'POST',
                 headers: {
@@ -69,7 +69,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             };
 
-            const req = http.request(options, res => {
+            const req = https.request(options, res => {
                 let data = '';
                 res.on('data', chunk => { data += chunk; });
                 res.on('end', () => {
