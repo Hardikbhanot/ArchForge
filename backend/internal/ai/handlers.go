@@ -144,8 +144,11 @@ func (h *AIHandler) HandleGenerateHLD(w http.ResponseWriter, r *http.Request) {
 	// We'll strip the massive code snippets and only pass the structural declarations.
 	var architectureContext string
 	for _, sym := range projectIR.Symbols {
-		// Only include structural components, not every single function if the project is huge, or just include names
-		if sym.Kind == "Class" || sym.Kind == "Interface" || sym.Kind == "Struct" || sym.Kind == "Module" {
+		// Only include structural components and infrastructure
+		isAppStruct := sym.Kind == "Class" || sym.Kind == "Interface" || sym.Kind == "Struct" || sym.Kind == "Module"
+		isInfra := strings.HasPrefix(sym.Kind, "K8s_") || strings.HasPrefix(sym.Kind, "TF_") || sym.Kind == "ContainerImage" || sym.Kind == "ComposeService" || sym.Kind == "NetworkPort"
+		
+		if isAppStruct || isInfra {
 			architectureContext += fmt.Sprintf("- %s (%s) in %s\n", sym.Name, sym.Kind, sym.Location.File)
 		}
 	}
