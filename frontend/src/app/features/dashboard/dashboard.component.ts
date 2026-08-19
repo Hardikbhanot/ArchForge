@@ -1,3 +1,5 @@
+import { environment } from "../../../../environments/environment";
+
 import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -667,7 +669,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Start status polling every 4 seconds
     this.pollingSub = interval(4000)
-      .pipe(switchMap(() => this.http.get<Project[]>('http://localhost:8080/api/v1/projects')))
+      .pipe(switchMap(() => this.http.get<Project[]>(`${environment.apiUrl}/projects`)))
       .subscribe({
         next: (list) => {
           this.projects.set(list);
@@ -693,7 +695,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    this.http.get<Overview>('http://localhost:8080/api/v1/overview').subscribe({
+    this.http.get<Overview>(`${environment.apiUrl}/overview`).subscribe({
       next: (res) => {
         this.overview.set(res);
         this.loading.set(false);
@@ -706,7 +708,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   fetchProjects(): void {
-    this.http.get<Project[]>('http://localhost:8080/api/v1/projects').subscribe({
+    this.http.get<Project[]>(`${environment.apiUrl}/projects`).subscribe({
       next: (list) => {
         this.projects.set(list);
       },
@@ -720,7 +722,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.githubLoading.set(true);
     this.githubError.set(null);
 
-    this.http.get<GithubRepo[]>('http://localhost:8080/api/v1/github/repos').subscribe({
+    this.http.get<GithubRepo[]>(`${environment.apiUrl}/github/repos`).subscribe({
       next: (repos) => {
         this.githubRepos.set(repos);
         this.githubLoading.set(false);
@@ -733,7 +735,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   connectGitHub(): void {
-    this.http.get<{url: string}>('http://localhost:8080/api/v1/auth/github/login').subscribe({
+    this.http.get<{url: string}>(`${environment.apiUrl}/auth/github/login`).subscribe({
       next: (res) => {
         window.location.href = res.url;
       },
@@ -751,7 +753,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   quickIngest(repo: GithubRepo): void {
     this.isImporting.set(true);
     
-    this.http.post<Project>('http://localhost:8080/api/v1/projects', {
+    this.http.post<Project>(`${environment.apiUrl}/projects`, {
       git_url: repo.html_url,
       branch: repo.default_branch || ''
     }).subscribe({
@@ -776,7 +778,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     const { git_url, branch } = this.importForm.value;
 
-    this.http.post<Project>('http://localhost:8080/api/v1/projects', {
+    this.http.post<Project>(`${environment.apiUrl}/projects`, {
       git_url: git_url!,
       branch: branch || ''
     }).subscribe({
@@ -795,7 +797,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Analyze Trigger
   analyzeProject(proj: Project): void {
-    this.http.post<any>(`http://localhost:8080/api/v1/projects/${proj.id}/parse`, {}).subscribe({
+    this.http.post<any>(`${environment.apiUrl}/projects/${proj.id}/parse`, {}).subscribe({
       next: (res) => {
         this.projects.update(list => list.map(p => p.id === proj.id ? { ...p, status: 'PARSING' } : p));
       },
@@ -826,7 +828,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       document.getElementById('insights-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
 
-    this.http.get<any>(`http://localhost:8080/api/v1/projects/${proj.id}/ir`).subscribe({
+    this.http.get<any>(`${environment.apiUrl}/projects/${proj.id}/ir`).subscribe({
       next: (ir) => {
         this.selectedProjectIR.set(ir);
         this.loadingIR.set(false);
@@ -852,7 +854,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const id = this.selectedProjectId();
     if (!id) return;
     this.loadingGraph.set(true);
-    let url = `http://localhost:8080/api/v1/projects/${id}/graph`;
+    let url = `${environment.apiUrl}/projects/${id}/graph`;
     if (pkg) {
       url += `?pkg=${encodeURIComponent(pkg)}`;
     }
@@ -951,7 +953,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const id = this.selectedProjectId();
     if (!id) return;
     this.loadingDocs.set(true);
-    this.http.get<any>(`http://localhost:8080/api/v1/projects/${id}/docs`).subscribe({
+    this.http.get<any>(`${environment.apiUrl}/projects/${id}/docs`).subscribe({
       next: (data) => {
         this.docsMarkdown.set(data.markdown || data.content || JSON.stringify(data));
         this.loadingDocs.set(false);
@@ -1062,7 +1064,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Download directly from project row
   downloadIRDirect(proj: Project): void {
-    this.http.get<any>(`http://localhost:8080/api/v1/projects/${proj.id}/ir`).subscribe({
+    this.http.get<any>(`${environment.apiUrl}/projects/${proj.id}/ir`).subscribe({
       next: (ir) => {
         const blob = new Blob([JSON.stringify(ir, null, 2)], { type: 'application/json' });
         const url = window.URL.createObjectURL(blob);
@@ -1080,7 +1082,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   downloadHLD(proj: Project): void {
     // We expect a direct text/markdown download, but Angular http client needs responseType: 'text'
-    this.http.get(`http://localhost:8080/api/v1/projects/${proj.id}/hld`, { responseType: 'text' }).subscribe({
+    this.http.get(`${environment.apiUrl}/projects/${proj.id}/hld`, { responseType: 'text' }).subscribe({
       next: (hldContent) => {
         const newWindow = window.open('', '_blank');
         if (newWindow) {
@@ -1182,7 +1184,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.delete<any>(`http://localhost:8080/api/v1/projects/${proj.id}`).subscribe({
+    this.http.delete<any>(`${environment.apiUrl}/projects/${proj.id}`).subscribe({
       next: () => {
         this.projects.update(list => list.filter(p => p.id !== proj.id));
         if (this.selectedProjectId() === proj.id) {
