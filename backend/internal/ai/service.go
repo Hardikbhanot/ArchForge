@@ -172,7 +172,7 @@ func (s *AIService) SearchSymbols(ctx context.Context, provider string, query st
 	return results, nil
 }
 
-func (s *AIService) AnswerQuery(ctx context.Context, query string, contextSymbols []parser.Symbol) (string, error) {
+func (s *AIService) AnswerQuery(ctx context.Context, query string, contextSymbols []parser.Symbol, projectIR parser.ProjectIR) (string, error) {
 	var contextBuilder string
 	for _, sym := range contextSymbols {
 		contextBuilder += fmt.Sprintf("Symbol: %s (Kind: %s, File: %s)\n", sym.Name, sym.Kind, sym.Location.File)
@@ -185,16 +185,33 @@ func (s *AIService) AnswerQuery(ctx context.Context, query string, contextSymbol
 		contextBuilder += "---\n"
 	}
 
+	var globalContext string
+	for _, sym := range projectIR.Symbols {
+		isAppStruct := sym.Kind == "Class" || sym.Kind == "Interface" || sym.Kind == "Struct" || sym.Kind == "Module"
+		isInfra := strings.HasPrefix(sym.Kind, "K8s_") || strings.HasPrefix(sym.Kind, "TF_") || sym.Kind == "ContainerImage" || sym.Kind == "ComposeService" || sym.Kind == "NetworkPort"
+		
+		if isAppStruct || isInfra {
+			globalContext += fmt.Sprintf("- %s (%s) in %s\n", sym.Name, sym.Kind, sym.Location.File)
+		}
+	}
+	if len(globalContext) > 3000 {
+		globalContext = globalContext[:3000] + "\n... (truncated)"
+	}
+
 	prompt := fmt.Sprintf(`You are ArchForge AI, an expert software architecture assistant.
 The user is asking a question about their codebase. Below is a list of relevant architectural symbols (classes, functions, etc.) retrieved from the codebase based on their semantic similarity to the query.
 
-Use ONLY the provided context to answer the question. If the answer cannot be determined from the context, say "I don't have enough context to answer that accurately."
-Always cite the File path when referring to a symbol. Keep your answer concise, but explain the concepts clearly so that even a beginner or layman can easily understand the logic. Use simple analogies if it helps explain complex flows.
-
-RELEVANT CONTEXT:
+To help you answer broad questions about the project's overall complexity, architecture, or external APIs, here is a global map of the project's key structural components:
+GLOBAL ARCHITECTURE MAP:
 %s
 
-USER QUESTION: %s`, contextBuilder, query)
+RELEVANT CODE SNIPPETS (Detailed Context):
+%s
+
+USER QUESTION: %s
+
+Use both the global map and the detailed snippets to answer the question. You are no longer strictly limited to only the snippets if the global map provides the answer. If the answer still cannot be reasonably determined, say "I don't have enough context to answer that accurately."
+Always cite the File path when referring to a symbol. Keep your answer concise, but explain the concepts clearly so that even a beginner or layman can easily understand the logic. Use simple analogies if it helps explain complex flows.`, globalContext, contextBuilder, query)
 
 	var temp float32 = 0.2
 	resp, err := s.client.Models.GenerateContent(ctx, "gemini-3.6-flash", genai.Text(prompt), &genai.GenerateContentConfig{

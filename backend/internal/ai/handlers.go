@@ -95,7 +95,7 @@ func (h *AIHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Generate the RAG answer using Gemini
-	answer, err := h.Service.AnswerQuery(r.Context(), req.Message, topSymbols)
+	answer, err := h.Service.AnswerQuery(r.Context(), req.Message, topSymbols, projectIR)
 	if err != nil {
 		json.NewEncoder(w).Encode(ChatResponse{Error: "Failed to generate AI response: " + err.Error()})
 		return
