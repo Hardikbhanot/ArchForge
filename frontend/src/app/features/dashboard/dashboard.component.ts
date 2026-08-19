@@ -1,4 +1,4 @@
-import { environment } from "../../../../environments/environment";
+import { environment } from "../../../environments/environment";
 
 import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
