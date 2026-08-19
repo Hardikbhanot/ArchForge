@@ -20,7 +20,7 @@ FROM nginx:alpine
 
 # Copy the compiled Angular artifacts to the Nginx html directory
 # In Angular 17+, the build output is usually in dist/<project-name>/browser
-COPY --from=builder /app/dist/archforge-frontend/browser /usr/share/nginx/html
+COPY --from=builder /app/dist/frontend/browser /usr/share/nginx/html
 
 # Custom Nginx configuration to route all traffic to index.html (for Angular routing)
 RUN echo 'server { \
