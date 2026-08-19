@@ -22,8 +22,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Install runtime dependencies for CGO (tree-sitter needs libgcc/libstdc++)
-RUN apk add --no-cache libgcc libstdc++ ca-certificates
+# Install runtime dependencies for CGO (tree-sitter needs libgcc/libstdc++) and git for cloning repos
+RUN apk add --no-cache libgcc libstdc++ ca-certificates git
 
 # Copy the pre-built binary file from the previous stage
 COPY --from=builder /app/archforge-api .
