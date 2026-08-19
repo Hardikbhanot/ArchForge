@@ -10,6 +10,7 @@ import (
 
 	"github.com/hardikbhanot/archforge/backend/internal/auth"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type errorResponse struct {
@@ -115,7 +116,8 @@ func (h *ParserHandler) GetIR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", projectID))
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
 	irFile, err := os.Open(irPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -126,4 +128,108 @@ func (h *ParserHandler) GetIR(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, irFile)
+}
+
+func (h *ParserHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "unauthorized"})
+		return
+	}
+
+	projectID := r.PathValue("id")
+	if projectID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "missing project ID"})
+		return
+	}
+
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "project not found"})
+		return
+	}
+
+	if proj.OwnerID != userID {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "forbidden"})
+		return
+	}
+
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
+
+	// Optional: drill into a specific package's files via ?pkg=<name>
+	pkg := r.URL.Query().Get("pkg")
+	var (graph *GraphResponse; graphErr error)
+	if pkg != "" {
+		graph, graphErr = CompileFileGraph(irPath, pkg)
+	} else {
+		graph, graphErr = CompileProjectGraph(irPath)
+	}
+	if graphErr != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "IR metadata has not been generated for this project yet"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(graph)
+}
+
+func (h *ParserHandler) GetDocs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "unauthorized"})
+		return
+	}
+
+	projectID := r.PathValue("id")
+	if projectID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "missing project ID"})
+		return
+	}
+
+	proj, err := h.ProjStore.GetByID(projectID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "project not found"})
+		return
+	}
+
+	if proj.OwnerID != userID {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "forbidden"})
+		return
+	}
+
+	repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+	irPath := filepath.Join(h.Service.OutputDir, fmt.Sprintf("%s.json", repoHash))
+	docs, err := GenerateSystemDocs(irPath)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "IR metadata has not been generated for this project yet"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(docs)
 }

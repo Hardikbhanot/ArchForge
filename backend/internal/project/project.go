@@ -38,7 +38,8 @@ type ProjectStore interface {
 	Create(project *Project) error
 	GetByID(id string) (*Project, error)
 	ListByOwner(ownerID string) ([]*Project, error)
-	UpdateStatus(id string, status ProjectStatus, commitHash string, errStr string) error
+	UpdateStatus(id string, status ProjectStatus, localPath string, commitHash string, errStr string) error
+	Delete(id string) error
 }
 
 type InMemoryProjectStore struct {
@@ -81,7 +82,7 @@ func (s *InMemoryProjectStore) ListByOwner(ownerID string) ([]*Project, error) {
 	return list, nil
 }
 
-func (s *InMemoryProjectStore) UpdateStatus(id string, status ProjectStatus, commitHash string, errStr string) error {
+func (s *InMemoryProjectStore) UpdateStatus(id string, status ProjectStatus, localPath string, commitHash string, errStr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, exists := s.projects[id]
@@ -89,7 +90,18 @@ func (s *InMemoryProjectStore) UpdateStatus(id string, status ProjectStatus, com
 		return ErrProjectNotFound
 	}
 	p.Status = status
+	p.LocalPath = localPath
 	p.CommitHash = commitHash
 	p.Error = errStr
+	return nil
+}
+
+func (s *InMemoryProjectStore) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.projects[id]; !exists {
+		return ErrProjectNotFound
+	}
+	delete(s.projects, id)
 	return nil
 }

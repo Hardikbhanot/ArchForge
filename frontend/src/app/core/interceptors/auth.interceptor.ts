@@ -20,8 +20,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(cloned).pipe(
     catchError((error: HttpErrorResponse) => {
-      // If unauthorized, or if the user profile/data is not found on restarted server
-      if (error.status === 401 || (error.status === 404 && (req.url.includes('/me') || req.url.includes('/repos') || req.url.includes('/projects')))) {
+      // Only redirect to login on explicit 401 Unauthorized.
+      // Do NOT redirect on 404 — sub-endpoints like /graph or /docs may
+      // legitimately return 404 when a project hasn't been parsed yet.
+      if (error.status === 401) {
         authService.logout();
         router.navigate(['/login']);
       }

@@ -54,7 +54,7 @@ export class AuthService {
     return localStorage.getItem('af_token');
   }
 
-  private handleAuthentication(token: string, user: User): void {
+  handleAuthentication(token: string, user: User): void {
     localStorage.setItem('af_token', token);
     localStorage.setItem('af_user', JSON.stringify(user));
     this.currentUserSignal.set(user);

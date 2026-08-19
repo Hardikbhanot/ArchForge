@@ -41,6 +41,11 @@ func (a *GoAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 
 	// Re-seek file for parsing
 	_, _ = file.Seek(0, 0)
+	
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to read file: %w", err)
+	}
 
 	fset := token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, absPath, file, parser.ParseComments)
@@ -134,6 +139,11 @@ func (a *GoAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					}
 
 					symbolID := fmt.Sprintf("go://%s/%s", pkgName, ts.Name.Name)
+					
+					startOffset := fset.Position(ts.Pos()).Offset
+					endOffset := fset.Position(ts.End()).Offset
+					codeSnippet := string(content[startOffset:endOffset])
+					
 					symbols = append(symbols, Symbol{
 						ID:            symbolID,
 						Name:          ts.Name.Name,
@@ -148,6 +158,7 @@ func (a *GoAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 							ColumnEnd:   endCol,
 						},
 						Documentation: doc,
+						CodeSnippet:   codeSnippet,
 						Signature:     fmt.Sprintf("type %s %s", ts.Name.Name, kind),
 						Children:      childIDs,
 					})
@@ -201,6 +212,10 @@ func (a *GoAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 				signature = fmt.Sprintf("func %s()", d.Name.Name) // simplified signature representation
 			}
 
+			startOffset := fset.Position(d.Pos()).Offset
+			endOffset := fset.Position(d.End()).Offset
+			codeSnippet := string(content[startOffset:endOffset])
+
 			symbols = append(symbols, Symbol{
 				ID:            symbolID,
 				Name:          d.Name.Name,
@@ -215,6 +230,7 @@ func (a *GoAdapter) ParseFile(rootPath, relPath string) (*FileIR, []Symbol, []Re
 					ColumnEnd:   endCol,
 				},
 				Documentation: doc,
+				CodeSnippet:   codeSnippet,
 				Signature:     signature,
 			})
 

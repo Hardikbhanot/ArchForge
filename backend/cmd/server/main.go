@@ -1,13 +1,18 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/hardikbhanot/archforge/backend/internal/ai"
 	"github.com/hardikbhanot/archforge/backend/internal/auth"
+	"github.com/hardikbhanot/archforge/backend/internal/db"
 	"github.com/hardikbhanot/archforge/backend/internal/parser"
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/webhook"
 	"github.com/joho/godotenv"
 )
 
@@ -32,24 +37,52 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func newMux() http.Handler {
+func newMux(database *sql.DB) http.Handler {
 	mux := http.NewServeMux()
 
-	// Initialize Auth structures
-	userStore := auth.NewInMemoryUserStore()
+	// Initialize Auth structures (using Postgres)
+	userStore := auth.NewPostgresUserStore(database)
 	authHandler := auth.NewAuthHandler(userStore)
 	githubHandler := auth.NewGithubHandler(userStore)
 
-	// Initialize Project structures
-	projectStore := project.NewInMemoryProjectStore()
+	// Initialize Project structures (using Postgres)
+	projectStore := project.NewPostgresProjectStore(database)
 	cloner := project.NewCloner(projectStore, "./data/repositories")
 	projectHandler := project.NewProjectHandler(projectStore, cloner)
 
 	// Initialize Parser structures
 	parserManager := parser.NewParserManager()
 	parserManager.RegisterAdapter(".go", parser.NewGoAdapter())
+	parserManager.RegisterAdapter(".ts", parser.NewTSAdapter())
+	parserManager.RegisterAdapter(".tsx", parser.NewTSXAdapter())
+	parserManager.RegisterAdapter(".js", parser.NewJSAdapter())
+	parserManager.RegisterAdapter(".jsx", parser.NewJSAdapter())
+	parserManager.RegisterAdapter(".py", parser.NewPythonAdapter())
+	parserManager.RegisterAdapter(".java", parser.NewJavaAdapter())
+	parserManager.RegisterAdapter(".cpp", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".hpp", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".cc", parser.NewCppAdapter())
+	parserManager.RegisterAdapter(".rs", parser.NewRustAdapter())
+	parserManager.RegisterAdapter(".cs", parser.NewCSharpAdapter())
 	parserService := parser.NewParserService(projectStore, parserManager, "./data/ir")
 	parserHandler := parser.NewParserHandler(projectStore, parserService)
+
+	// Initialize AI Service
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	hfAPIKey := os.Getenv("HUGGINGFACE_API_KEY")
+	voyageAPIKey := os.Getenv("VOYAGE_API_KEY")
+	
+	var aiHandler *ai.AIHandler
+	if apiKey != "" {
+		aiService, err := ai.NewAIService(apiKey, hfAPIKey, voyageAPIKey, "./data/embeddings")
+		if err != nil {
+			log.Printf("Failed to initialize AI Service: %v", err)
+		} else {
+			aiHandler = ai.NewAIHandler(aiService, "./data/ir", projectStore)
+		}
+	} else {
+		log.Println("GEMINI_API_KEY not set. AI Chat feature will be disabled.")
+	}
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -84,10 +117,30 @@ func newMux() http.Handler {
 	mux.Handle("POST /api/v1/projects", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Import)))
 	mux.Handle("GET /api/v1/projects", auth.AuthMiddleware(http.HandlerFunc(projectHandler.List)))
 	mux.Handle("GET /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Get)))
+	mux.Handle("DELETE /api/v1/projects/{id}", auth.AuthMiddleware(http.HandlerFunc(projectHandler.Delete)))
+
+	// AI Endpoints
+	if aiHandler != nil {
+		mux.Handle("POST /api/v1/projects/{id}/chat", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleChat)))
+		mux.Handle("GET /api/v1/projects/{id}/hld", auth.AuthMiddleware(http.HandlerFunc(aiHandler.HandleGenerateHLD)))
+	}
+
+	// Initialize Webhook Handler
+	whHandler, err := webhook.NewWebhookHandler()
+	if err != nil {
+		log.Printf("Failed to initialize Webhook Handler: %v", err)
+	}
 
 	// Parser Endpoints
 	mux.Handle("POST /api/v1/projects/{id}/parse", auth.AuthMiddleware(http.HandlerFunc(parserHandler.Parse)))
 	mux.Handle("GET /api/v1/projects/{id}/ir", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetIR)))
+	mux.Handle("GET /api/v1/projects/{id}/graph", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetGraph)))
+	mux.Handle("GET /api/v1/projects/{id}/docs", auth.AuthMiddleware(http.HandlerFunc(parserHandler.GetDocs)))
+
+	// Webhook Endpoints
+	if whHandler != nil {
+		mux.HandleFunc("POST /api/v1/webhooks/github", whHandler.HandleGitHubEvent)
+	}
 
 	return corsMiddleware(mux)
 }
@@ -98,8 +151,15 @@ func main() {
 		log.Println("No .env file found, relying on system environment variables")
 	}
 
+	// Connect to PostgreSQL database
+	database, err := db.InitDB()
+	if err != nil {
+		log.Fatalf("failed to initialize database: %v", err)
+	}
+	defer database.Close()
+
 	log.Println("ArchForge API listening on :8080")
-	if err := http.ListenAndServe(":8080", newMux()); err != nil {
+	if err := http.ListenAndServe(":8080", newMux(database)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }

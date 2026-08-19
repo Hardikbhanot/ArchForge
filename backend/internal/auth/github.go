@@ -177,7 +177,7 @@ func (h *GithubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Update access token for existing user
-		user.GithubAccessToken = githubToken
+		_ = h.Store.UpdateGithubToken(user.ID, githubToken)
 	}
 
 	token, err := GenerateToken(user.ID, user.Username)

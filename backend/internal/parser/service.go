@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hardikbhanot/archforge/backend/internal/project"
+	"github.com/hardikbhanot/archforge/backend/internal/utils"
 )
 
 type ParserService struct {
@@ -29,7 +30,7 @@ func NewParserService(projStore project.ProjectStore, manager *ParserManager, ou
 
 func (s *ParserService) ParseProject(proj *project.Project) {
 	// Transition status to PARSING
-	err := s.ProjStore.UpdateStatus(proj.ID, project.StatusParsing, "", "")
+	err := s.ProjStore.UpdateStatus(proj.ID, project.StatusParsing, proj.LocalPath, "", "")
 	if err != nil {
 		log.Printf("ParserService: failed to update status to PARSING for project %s: %v", proj.ID, err)
 		return
@@ -37,6 +38,15 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 
 	go func() {
 		log.Printf("ParserService: starting parse task on directory: %s", proj.LocalPath)
+
+		repoHash := utils.GenerateRepoHash(proj.GitURL, proj.Branch)
+		irFilename := filepath.Join(s.OutputDir, fmt.Sprintf("%s.json", repoHash))
+
+		if _, err := os.Stat(irFilename); err == nil {
+			log.Printf("ParserService: IR for repo hash %s already exists, skipping parse", repoHash)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusParsed, proj.LocalPath, proj.CommitHash, "")
+			return
+		}
 
 		var files []FileIR
 		var symbols []Symbol
@@ -47,7 +57,7 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 		if _, err := os.Stat(proj.LocalPath); os.IsNotExist(err) {
 			errMsg := fmt.Sprintf("repository path not found: %s", proj.LocalPath)
 			log.Printf("ParserService: %s", errMsg)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, "", errMsg)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, proj.LocalPath, "", errMsg)
 			return
 		}
 
@@ -106,7 +116,7 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 		if err != nil {
 			errMsg := fmt.Sprintf("directory traversal failed: %v", err)
 			log.Printf("ParserService: %s", errMsg)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, "", errMsg)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, proj.LocalPath, "", errMsg)
 			return
 		}
 
@@ -115,12 +125,29 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 			modules = append(modules, mod)
 		}
 
+		// Detect primary language
+		langCounts := make(map[string]int)
+		for _, f := range files {
+			langCounts[f.Language]++
+		}
+		primaryLang := "Unknown"
+		maxCount := 0
+		for lang, count := range langCounts {
+			if count > maxCount {
+				maxCount = count
+				primaryLang = lang
+			}
+		}
+		if primaryLang == "Unknown" && len(files) > 0 {
+			primaryLang = files[0].Language
+		}
+
 		// Compile Project IR schema
 		projectIR := ProjectIR{
 			SchemaVersion: "1.0.0",
 			Name:          proj.Name,
 			Version:       "1.0.0",
-			Language:      "Go", // Currently supported default
+			Language:      primaryLang,
 			Repository:    proj.GitURL,
 			Modules:       modules,
 			Files:         files,
@@ -129,7 +156,7 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 			Metadata: Metadata{
 				CreatedBy:   "ArchForge ParserService 1.0",
 				Version:     1,
-				Language:    "Go",
+				Language:    primaryLang,
 				Confidence:  1.0,
 				GeneratedAt: time.Now(),
 			},
@@ -139,16 +166,15 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 		if err := os.MkdirAll(s.OutputDir, 0755); err != nil {
 			errMsg := fmt.Sprintf("failed to create output IR folder: %v", err)
 			log.Printf("ParserService: %s", errMsg)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, "", errMsg)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, proj.LocalPath, "", errMsg)
 			return
 		}
 
-		irFilename := filepath.Join(s.OutputDir, fmt.Sprintf("%s.json", proj.ID))
 		irFile, err := os.Create(irFilename)
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to write IR json metadata file: %v", err)
 			log.Printf("ParserService: %s", errMsg)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, "", errMsg)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, proj.LocalPath, "", errMsg)
 			return
 		}
 		defer irFile.Close()
@@ -158,12 +184,12 @@ func (s *ParserService) ParseProject(proj *project.Project) {
 		if err := encoder.Encode(projectIR); err != nil {
 			errMsg := fmt.Sprintf("failed to serialize IR json: %v", err)
 			log.Printf("ParserService: %s", errMsg)
-			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, "", errMsg)
+			_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusFailed, proj.LocalPath, "", errMsg)
 			return
 		}
 
 		// Update to PARSED
-		_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusParsed, proj.CommitHash, "")
+		_ = s.ProjStore.UpdateStatus(proj.ID, project.StatusParsed, proj.LocalPath, proj.CommitHash, "")
 		log.Printf("ParserService: successfully completed parsing task on %s", proj.ID)
 	}()
 }

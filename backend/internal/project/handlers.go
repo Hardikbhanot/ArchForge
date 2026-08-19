@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -178,4 +180,62 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(p)
+}
+
+func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	userID, _, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "unauthorized"})
+		return
+	}
+
+	projectID := r.PathValue("id")
+	if projectID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "missing project ID"})
+		return
+	}
+
+	p, err := h.Store.GetByID(projectID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "project not found"})
+		return
+	}
+
+	if p.OwnerID != userID {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "forbidden"})
+		return
+	}
+
+	// 1. Delete physical cloned files
+	if p.LocalPath != "" {
+		_ = os.RemoveAll(p.LocalPath)
+	}
+
+	// 2. Delete generated IR file
+	irPath := filepath.Join("./data/ir", p.ID+".json")
+	_ = os.Remove(irPath)
+
+	// 3. Delete database record
+	if err := h.Store.Delete(p.ID); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(errorResponse{Error: "failed to delete project database record"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"message": "project deleted successfully",
+		"id":      p.ID,
+	})
 }

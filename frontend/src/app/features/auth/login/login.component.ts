@@ -108,9 +108,9 @@ import { AuthService } from '../../../core/services/auth.service';
       align-items: center;
       width: 100%;
       height: 100%;
-      background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
-      font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #f1f5f9;
+      /* Background is handled globally, but we keep this container transparent */
+      font-family: var(--font-sans);
+      color: var(--text-primary);
       overflow: hidden;
     }
 
@@ -129,14 +129,14 @@ import { AuthService } from '../../../core/services/auth.service';
     .glow-mesh-1 {
       top: -10%;
       left: -10%;
-      background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+      background: radial-gradient(circle, var(--accent-indigo) 0%, transparent 70%);
       animation: float-slow 20s infinite alternate;
     }
 
     .glow-mesh-2 {
       bottom: -10%;
       right: -10%;
-      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+      background: radial-gradient(circle, var(--accent-violet) 0%, transparent 70%);
       animation: float-slow-reverse 25s infinite alternate;
     }
 
@@ -148,11 +148,11 @@ import { AuthService } from '../../../core/services/auth.service';
       max-width: 440px;
       padding: 3.5rem 2.5rem;
       border-radius: 24px;
-      background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(20px) saturate(180%);
-      -webkit-backdrop-filter: blur(20px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      background: var(--bg-card);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-subtle) inset;
       animation: scale-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
@@ -163,10 +163,10 @@ import { AuthService } from '../../../core/services/auth.service';
 
     .logo-icon {
       font-size: 2.2rem;
-      color: #3b82f6;
-      text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+      color: var(--accent-indigo);
+      text-shadow: 0 0 20px var(--accent-indigo-glow);
       margin-bottom: 0.5rem;
-      animation: pulse-glow 2s infinite alternate;
+      animation: pulseGlow 2s infinite alternate;
     }
 
     .brand-section h2 {
@@ -174,14 +174,14 @@ import { AuthService } from '../../../core/services/auth.service';
       font-weight: 800;
       letter-spacing: -0.025em;
       margin: 0;
-      background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
+      background: linear-gradient(135deg, #ffffff 0%, var(--text-secondary) 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
     .subtitle {
       font-size: 0.875rem;
-      color: #64748b;
+      color: var(--text-muted);
       margin-top: 0.25rem;
     }
 
@@ -226,7 +226,7 @@ import { AuthService } from '../../../core/services/auth.service';
     label {
       font-size: 0.8125rem;
       font-weight: 600;
-      color: #94a3b8;
+      color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -240,23 +240,24 @@ import { AuthService } from '../../../core/services/auth.service';
       width: 100%;
       padding: 0.875rem 1.25rem;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #f8fafc;
+      background: rgba(2, 6, 23, 0.4);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
       font-size: 0.9375rem;
       transition: all 0.2s ease;
       box-sizing: border-box;
+      font-family: inherit;
     }
 
     input::placeholder {
-      color: #475569;
+      color: var(--text-muted);
     }
 
     input:focus {
       outline: none;
-      border-color: #3b82f6;
-      background: rgba(15, 23, 42, 0.8);
-      box-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+      border-color: var(--accent-indigo);
+      background: rgba(2, 6, 23, 0.6);
+      box-shadow: 0 0 15px var(--accent-indigo-glow);
     }
 
     input.invalid {
@@ -275,7 +276,7 @@ import { AuthService } from '../../../core/services/auth.service';
       transform: translateY(-50%);
       background: none;
       border: none;
-      color: #64748b;
+      color: var(--text-secondary);
       cursor: pointer;
       font-size: 1.1rem;
       padding: 0.25rem;
@@ -283,7 +284,7 @@ import { AuthService } from '../../../core/services/auth.service';
     }
 
     .visibility-toggle:hover {
-      color: #94a3b8;
+      color: var(--text-primary);
     }
 
     .validation-error {
@@ -297,14 +298,14 @@ import { AuthService } from '../../../core/services/auth.service';
       width: 100%;
       padding: 0.875rem;
       border-radius: 12px;
-      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-violet) 100%);
       color: white;
       font-size: 0.9375rem;
       font-weight: 700;
       border: none;
       cursor: pointer;
       transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+      box-shadow: 0 4px 12px var(--accent-indigo-glow);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -312,9 +313,9 @@ import { AuthService } from '../../../core/services/auth.service';
     }
 
     .btn-submit:hover:not(:disabled) {
-      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      filter: brightness(1.1);
       transform: translateY(-1px);
-      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+      box-shadow: 0 8px 20px var(--accent-violet-glow);
     }
 
     .btn-submit:active:not(:disabled) {
@@ -324,7 +325,7 @@ import { AuthService } from '../../../core/services/auth.service';
     .btn-submit:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-      background: #334155;
+      background: var(--bg-card-hover);
       box-shadow: none;
     }
 
@@ -341,18 +342,18 @@ import { AuthService } from '../../../core/services/auth.service';
       text-align: center;
       margin-top: 2rem;
       font-size: 0.875rem;
-      color: #64748b;
+      color: var(--text-secondary);
     }
 
     .footer-links a {
-      color: #3b82f6;
+      color: var(--accent-indigo);
       text-decoration: none;
       font-weight: 600;
       transition: color 0.2s;
     }
 
     .footer-links a:hover {
-      color: #60a5fa;
+      color: var(--accent-violet);
       text-decoration: underline;
     }
 
@@ -360,11 +361,11 @@ import { AuthService } from '../../../core/services/auth.service';
       width: 100%;
       padding: 0.875rem;
       border-radius: 12px;
-      background: #24292e;
-      color: white;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
       font-size: 0.9375rem;
       font-weight: 700;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-subtle);
       cursor: pointer;
       transition: all 0.2s ease;
       display: flex;
@@ -375,8 +376,8 @@ import { AuthService } from '../../../core/services/auth.service';
     }
 
     .btn-github:hover {
-      background: #2f363d;
-      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-highlight);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
 
@@ -384,7 +385,7 @@ import { AuthService } from '../../../core/services/auth.service';
       display: flex;
       align-items: center;
       text-align: center;
-      color: #475569;
+      color: var(--text-muted);
       font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -394,7 +395,7 @@ import { AuthService } from '../../../core/services/auth.service';
     .divider::before, .divider::after {
       content: '';
       flex: 1;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid var(--border-subtle);
     }
 
     .divider::before {
@@ -423,11 +424,6 @@ import { AuthService } from '../../../core/services/auth.service';
     @keyframes float-slow-reverse {
       from { transform: translate(0, 0); }
       to { transform: translate(-40px, -40px); }
-    }
-
-    @keyframes pulse-glow {
-      from { text-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
-      to { text-shadow: 0 0 25px rgba(59, 130, 246, 0.6); }
     }
 
     @keyframes fade-in {
@@ -486,7 +482,7 @@ export class LoginComponent {
     this.authService.login(email!, password!).subscribe({
       next: () => {
         this.isLoading.set(false);
-        this.router.navigate(['/']);
+        this.router.navigate(['/dashboard']);
       },
       error: (err) => {
         this.isLoading.set(false);
