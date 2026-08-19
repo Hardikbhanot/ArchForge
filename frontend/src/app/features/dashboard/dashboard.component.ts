@@ -1082,13 +1082,72 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // We expect a direct text/markdown download, but Angular http client needs responseType: 'text'
     this.http.get(`http://localhost:8080/api/v1/projects/${proj.id}/hld`, { responseType: 'text' }).subscribe({
       next: (hldContent) => {
-        const blob = new Blob([hldContent], { type: 'text/markdown' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${proj.name}-hld.md`;
-        link.click();
-        window.URL.revokeObjectURL(url);
+        const newWindow = window.open('', '_blank');
+        if (newWindow) {
+          newWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>${proj.name} HLD</title>
+              <script type="module">
+                import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+              </script>
+              <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+              <style>
+                body {
+                  font-family: 'Inter', 'Segoe UI', sans-serif;
+                  background-color: #0f172a;
+                  color: #f1f5f9;
+                  padding: 40px;
+                  max-width: 1000px;
+                  margin: 0 auto;
+                  line-height: 1.6;
+                }
+                h1, h2, h3 { color: #8b5cf6; }
+                pre { background: #1e293b; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #334155; }
+                code { font-family: monospace; color: #38bdf8; }
+                a { color: #3b82f6; }
+                .mermaid { padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0; background: #020617; border: 1px solid #1e293b; }
+              </style>
+            </head>
+            <body>
+              <div id="content">Loading HLD...</div>
+              <script>
+                const rawMarkdown = \`${hldContent.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`;
+                
+                const renderer = new marked.Renderer();
+                const originalCode = renderer.code.bind(renderer);
+                renderer.code = function({text, lang, escaped}) {
+                  if (lang === 'mermaid') {
+                    return '<div class="mermaid">' + text + '</div>';
+                  }
+                  return originalCode({text, lang, escaped});
+                };
+                
+                // For older marked versions, signature is (code, language, isEscaped)
+                renderer.code = function(code, language, isEscaped) {
+                  // marked v4+ sends objects, older sends args. Handle both.
+                  let actualCode = typeof code === 'string' ? code : code.text;
+                  let actualLang = typeof language === 'string' ? language : code.lang;
+                  
+                  if (actualLang === 'mermaid') {
+                    return '<div class="mermaid">' + actualCode + '</div>';
+                  }
+                  if(typeof code === 'string') {
+                     return originalCode(code, language, isEscaped);
+                  } else {
+                     return originalCode(code);
+                  }
+                };
+
+                document.getElementById('content').innerHTML = marked.parse(rawMarkdown, { renderer });
+              </script>
+            </body>
+            </html>
+          `);
+          newWindow.document.close();
+        }
       },
       error: (err) => {
         alert(err.error || 'Failed to generate HLD document.');

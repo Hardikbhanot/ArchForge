@@ -1,0 +1,59 @@
+{
+  "name": "archforge-vscode",
+  "displayName": "ArchForge AI",
+  "description": "AI Software Architecture Intelligence in your IDE",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "archforge.askAI",
+        "title": "ArchForge: Ask AI about this code"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "archforge-sidebar",
+          "title": "ArchForge AI",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "archforge-sidebar": [
+        {
+          "type": "webview",
+          "id": "archforge.chatView",
+          "name": "Architecture Chat"
+        }
+      ]
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "archforge.askAI",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "20.x",
+    "typescript": "^5.3.3"
+  }
+}

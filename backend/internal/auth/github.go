@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -116,12 +117,14 @@ func (h *GithubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 		var tokenResp githubTokenResponse
 		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+			log.Printf("Failed to decode token response: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(errorResponse{Error: "failed to decode github token response"})
 			return
 		}
 
 		if tokenResp.Error != "" {
+			log.Printf("GitHub OAuth Error: %s", tokenResp.Error)
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(errorResponse{Error: tokenResp.Error})
 			return
